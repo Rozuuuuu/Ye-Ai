@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import Sidebar from './Sidebar';
 
 /**
  * TopAppBar — branded header with menu + flash toggle.
@@ -7,20 +8,23 @@ import { motion } from 'framer-motion';
  */
 export default function TopAppBar() {
   const [flashOn, setFlashOn] = useState(false);
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <header className="flex justify-between items-center w-full px-6 py-4 fixed top-0 z-50">
-      {/* Left: Menu */}
-      <motion.button
-        id="menu-btn"
-        className="flex items-center justify-center"
-        style={{ color: 'rgba(255,255,255,0.5)' }}
-        whileTap={{ scale: 0.88 }}
-        whileHover={{ color: '#ffb3b0' }}
-        aria-label="Open menu"
-      >
-        <span className="material-symbols-outlined">menu</span>
-      </motion.button>
+    <>
+      <header className="flex justify-between items-center w-full px-6 py-4 fixed top-0 z-50">
+        {/* Left: Menu */}
+        <motion.button
+          id="menu-btn"
+          className="flex items-center justify-center"
+          style={{ color: 'rgba(255,255,255,0.5)' }}
+          onClick={() => setSidebarOpen(true)}
+          whileTap={{ scale: 0.88 }}
+          whileHover={{ color: '#ffb3b0' }}
+          aria-label="Open menu"
+        >
+          <span className="material-symbols-outlined">menu</span>
+        </motion.button>
 
       {/* Center: Brand wordmark */}
       <div className="absolute left-1/2 -translate-x-1/2 text-center pointer-events-none">
@@ -51,6 +55,8 @@ export default function TopAppBar() {
           {flashOn ? 'flash_on' : 'flash_off'}
         </span>
       </motion.button>
-    </header>
+      </header>
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
+    </>
   );
 }

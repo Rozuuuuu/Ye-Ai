@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 const NAV_ITEMS = [
   { id: 'nav-camera', icon: 'camera', label: 'Camera', path: '/' },
   { id: 'nav-tryon',  icon: 'auto_awesome', label: 'Try On', path: '/tryon' },
+  { id: 'nav-history', icon: 'history', label: 'Archive', path: '/archive' },
   { id: 'nav-style',  icon: 'styler', label: 'Style', path: '/style' },
 ];
 
