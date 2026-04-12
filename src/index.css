@@ -90,7 +90,6 @@ body {
   background-color: #131313;
   color: #e5e2e1;
   font-family: "Inter", system-ui, sans-serif;
-  overflow: hidden;
   min-height: 100dvh;
 }
 

@@ -1,84 +1,174 @@
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import TopAppBar from '../components/TopAppBar';
 import BottomNavBar from '../components/BottomNavBar';
 
 export default function Archive() {
+  const navigate = useNavigate();
+
   return (
-    <div className="relative min-h-screen bg-[#131313] text-[#e5e2e1] selection:bg-[#ff6b6b] selection:text-[#6d0010] overflow-hidden">
+    <div className="relative min-h-screen bg-background text-on-background overflow-x-hidden pb-32">
       <TopAppBar />
 
-      {/* Main Canvas Content */}
-      <main className="min-h-screen pt-24 px-6 pb-32">
-        <div className="flex flex-col gap-8 max-w-5xl mx-auto">
-          {/* AI Verdict Banner */}
-          <motion.section 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="relative bg-[#201f1f] p-8 overflow-hidden rounded-[2px]"
-          >
-            <div className="relative z-10">
-              <span className="font-['Inter'] text-[10px] uppercase tracking-[0.5em] text-[#ff6b6b] font-bold">
-                AI VERDICT
-              </span>
-              <h1 className="font-['Newsreader'] text-6xl md:text-8xl leading-none mt-4 tracking-tight">
-                ABSOLUTELY NOT.
-              </h1>
-              <p className="font-['Inter'] text-white/60 max-w-md mt-6 leading-relaxed">
-                The proportions clash violently with the seasonal silhouette. We suggest structural asymmetry to regain authority.
-              </p>
-            </div>
-            <div className="absolute top-0 right-0 w-1/2 h-full opacity-20 grayscale pointer-events-none">
+      <main className="pt-24 px-6 max-w-5xl mx-auto relative z-10">
+        {/* Headline Section */}
+        <motion.section 
+          className="mb-12"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="flex items-baseline gap-4 mb-2">
+            <span className="text-[10px] font-bold tracking-[0.3em] text-primary-container uppercase">Archive_01</span>
+            <div className="h-[1px] flex-grow bg-outline-variant/30"></div>
+          </div>
+          <h2 className="font-['Inter'] text-6xl md:text-8xl font-black tracking-tighter uppercase leading-none mb-4">
+            THE ARCHIVE
+          </h2>
+          <p className="font-['Newsreader'] italic text-xl text-on-surface-variant/80 max-w-md">
+            A curated repository of your stylistic evolution, judged by the machine.
+          </p>
+        </motion.section>
+
+        {/* Bento Grid / Asymmetric Feed */}
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-12 gap-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          {/* Large Featured Entry */}
+          <div className="md:col-span-8 group relative overflow-hidden bg-surface-container border border-outline-variant/10">
+            <div className="aspect-[4/5] md:aspect-[16/10] overflow-hidden relative">
               <img 
-                alt="Fashion model" 
-                className="w-full h-full object-cover" 
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDU79__NBpVl5z9r33Xn9MJ-MxOXQtLVXEyK6wT1Q-MYkCTrgUOmO_3XSPFs7g21Zjc25rZsRq2kaFgbjEwPzJfg1JCbkvOCiOXkUCkH2zhA64C3s1grQQkPL-CWTTxUP7OrpQiblODYCqvlIY1iek7hyZqiJvEgdJG59rgFdCgd8xf25FuAJ_J6lApp7Yx9O2ebV5i89bo5arBSBFFVwBYwPnkBAWFyXXxQE6otOpympw4BcjRKDM5m2pUE0MRRYSz3K74DavjEuM"
+                alt="Editorial fashion" 
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBsqFWiY97MgsquNHbIogUcyfXygjep01WF48uYzOETXIyJXnTtUosFhwm4sFNFjoETJb9ua2w8KpxNdakEZtpsDve7WOXVkkzssj0wX04HzDj8_qATv6ghfYBPrxchZxuQ7He1IQPqpCf-xx04XvmE8zGOxr2FJU1IcZY1nSGcgNgnIxh3m1J5wd32Hldb4bJ83YXDsICgoA3DTiEwMKS8jw8xS7DEyNm0UM5nR5ixxGDQ6JM-deZe7DjahyVfiUQvEQF_8wvX9T4"
               />
-            </div>
-          </motion.section>
-
-          {/* Recommendation Bento */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          >
-            <div className="md:col-span-2 bg-[#2a2a2a] p-8 flex flex-col justify-between min-h-[300px] rounded-[2px]">
-              <span className="font-['Inter'] text-[10px] uppercase tracking-[0.3em] text-white/40 font-bold">
-                Suggested Pieces
-              </span>
-              <div className="flex gap-4 overflow-x-auto no-scrollbar py-4">
-                <div className="flex-shrink-0 w-48 h-64 bg-[#0e0e0e] relative group rounded-[2px] overflow-hidden">
-                  <img 
-                    alt="Coat" 
-                    className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all duration-300" 
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCtVhzaWtJLELBLezcg85GfIthH5X7mbRrjtPSDBbis0GSbuzuFlVWHloBQ2Tu4SfObRRZZW5IEwKQMmabuS8O7H1Ic5N9IQho16nhNPxm7xE3NyUIGvu1-Oad-ULV3uEkGkaOCd8Fv7QxLbisMVHfwBNQY6eWvFrH09AVMw4ls_dbBwblqI5WPUvxqKY1lvTSD3M49jl-ej9Dtlh32bwQuIfKsxwek_SQNpYvB38HjV9eemebcxG9leKl5AVQsbUzp8zIDSPtljEw"
-                  />
-                </div>
-                <div className="flex-shrink-0 w-48 h-64 bg-[#0e0e0e] relative group rounded-[2px] overflow-hidden">
-                  <img 
-                    alt="Jacket" 
-                    className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all duration-300" 
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYZGlXdX2ZkAmqF1YzK3qScgCiIYtpQqzc9ZQnCq-zQ351eQVbZ3OM2aiFS1V78jnb4tUoxuBFvop-avXj8CL8j_xDggKTI4dUw9XtPLVHhNjYOxDqz0US2CKHhhPWjgw-LnpsLsOHkdEbrHz5kAHSNCS8Sji3Vz2Wt6OjqYSdlj1xhzN-eswNoKtHeB6J59sRNBl1udABwB1c99Mss2K4kVutWRX2vvNVWXgyL6uNPiWHid1ILILFfbXnunAs_Ot7SNqE5JXlCvw"
-                  />
-                </div>
+              {/* Viewfinder Brackets */}
+              <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-primary-container"></div>
+              <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-primary-container"></div>
+              <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-primary-container"></div>
+              <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-primary-container"></div>
+              <div className="absolute bottom-6 right-6 flex flex-col items-end z-10">
+                <span className="font-['Inter'] text-[10px] font-bold tracking-widest text-white/40 uppercase mb-1">Score Verdict</span>
+                <div className="bg-primary-container px-4 py-2 text-[#131313] font-black text-3xl">92%</div>
               </div>
             </div>
-
-            <div className="bg-[#ff6b6b] p-8 flex flex-col justify-between rounded-[2px]">
-              <span className="font-['Inter'] text-[10px] uppercase tracking-[0.3em] text-[#6d0010] font-bold">
-                Style Score
-              </span>
-              <div className="font-['Newsreader'] text-8xl text-[#6d0010] leading-none italic">
-                14
+            <div className="p-6 flex justify-between items-end relative z-10 bg-gradient-to-t from-surface-container via-surface-container to-transparent -mt-10">
+              <div>
+                <p className="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">OCT 24, 2023</p>
+                <h3 className="font-['Newsreader'] italic text-2xl text-on-surface">Neon Cyber-Chic</h3>
               </div>
-              <p className="font-['Inter'] text-[10px] uppercase tracking-widest text-[#6d0010]/80 font-bold">
-                Percentile Rank: E-Tier
-              </p>
+              <button 
+                onClick={() => navigate('/archive/1')}
+                className="bg-surface-container-highest/50 backdrop-blur-md px-4 py-2 text-[10px] font-bold tracking-widest uppercase hover:bg-primary-container hover:text-black transition-all cursor-pointer z-20"
+              >
+                Details
+              </button>
             </div>
-          </motion.div>
-        </div>
+          </div>
+
+          {/* Small Entry 1 */}
+          <div className="md:col-span-4 group bg-surface-container-low border border-outline-variant/10 cursor-pointer" onClick={() => navigate('/archive/2')}>
+            <div className="aspect-square overflow-hidden relative">
+              <img 
+                alt="Menswear editorial" 
+                className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAn61q8nxkALTIKSVfPz0Tfi_V2LzKLkLNB_V88AObwcw3nC1kNby5OtXTyr73NhwoPr-ViFlHfKxQHL_bBvX52f14wl91eJmIYuCFhNQL6g6s1OX2intG0tZ6sCnCDHTxfTkOsd_I77_iW29-ns0psZAdKqt_VQoGOIfYyLwPq2Qbu_QRexRpyoctOGgrWaSP4RKESGk-0UReqNF0jI8Q7QaRsIf5IrdXOaZ5iBo-sXk6EQIwmGMEvEcdZVEM-CnzOe23RnPCv6r8"
+              />
+              <div className="absolute top-4 left-4">
+                <div className="bg-surface-container-lowest/80 backdrop-blur-sm px-2 py-1 text-[10px] font-bold text-primary-container">78%</div>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">OCT 20, 2023</p>
+              <h3 className="font-['Newsreader'] italic text-lg text-on-surface">Monochrome Minimal</h3>
+            </div>
+          </div>
+
+          {/* Small Entry 2 */}
+          <div className="md:col-span-4 group bg-surface-container-low border border-outline-variant/10 cursor-pointer" onClick={() => navigate('/archive/3')}>
+            <div className="aspect-square overflow-hidden relative">
+              <img 
+                alt="Streetwear outfit" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGCEIvqopIV5q4zw33F4bnEJ_uXTxCE03pQdaqIggqFS3zju2_l4b8PNYQhxxBQHbh6afoW0nZ1O60FGsYFfn3SPFZ28g8AvHMEpC-bPVAC32KrGmDZhGyyjnh593Azu5K_BGuC1CyNyzKqT274zqofcffP129xjt-pm5WiHld1PqnDe6fa7KIrEe9WpijLD9_2egk5TNimAZt3zBj0vD2XtA8oFOWnOJYfe1JJaKm9Ui476u7WGIlaQeyO4gpTTrjdhvjdNCeZ6M"
+              />
+              <div className="absolute top-4 left-4">
+                <div className="bg-surface-container-lowest/80 backdrop-blur-sm px-2 py-1 text-[10px] font-bold text-primary-container">85%</div>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">OCT 15, 2023</p>
+              <h3 className="font-['Newsreader'] italic text-lg text-on-surface">Tech-Brutalist</h3>
+            </div>
+          </div>
+
+          {/* Small Entry 3 */}
+          <div className="md:col-span-4 group bg-surface-container-low border border-outline-variant/10 cursor-pointer" onClick={() => navigate('/archive/4')}>
+            <div className="aspect-square overflow-hidden relative">
+              <img 
+                alt="High fashion accessory" 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtmzlEBlhkQSdQ42r7DJdjHAvyy9qeGko7wmwMjvoAuUWUbwpJA_WYDd9Xek20yi23L--BdnISTWmDniZM9UWjQUvqbf9us5p_7h3iVz40QTzFN4E1B-CDVOaEIfgPiRfcs6A5D2iWiow03sGlECU_YO-Gw5JabUJdZZK6pvh5sGgc_rJy0Qx7vLDYpeE0k3Rc7mgGr25fDll1o7rSn_Qvy43OjDgsktwk35z7VJiAnQ-rM7njXtXM2j9ICVjk8I08jBUPo9GZKcU"
+              />
+              <div className="absolute top-4 left-4">
+                <div className="bg-surface-container-lowest/80 backdrop-blur-sm px-2 py-1 text-[10px] font-bold text-primary-container">64%</div>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">OCT 12, 2023</p>
+              <h3 className="font-['Newsreader'] italic text-lg text-on-surface">Soft Goth</h3>
+            </div>
+          </div>
+
+          {/* Small Entry 4 */}
+          <div className="md:col-span-4 group bg-surface-container-low border border-outline-variant/10 cursor-pointer" onClick={() => navigate('/archive/5')}>
+            <div className="aspect-square overflow-hidden relative">
+              <img 
+                alt="Evening wear" 
+                className="w-full h-full object-cover grayscale-0 group-hover:sepia transition-all duration-500" 
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxZyg01AVjnx0i0h8DzQ0arnw6-zMlQw_ZqlOZqYFJ1nnwYHIm7yReea7nfNWHQ7X25fWUWmYCZjG-qDCtEuMUIIgoMmGBcEEx8WuqfPSGcBiP9GsimHykhvlifgDHedFJmpvaRvpwQuXpznLdumNqayuunsuUnUIVjg_8rKGj6dFvSDdUyHSCUImx9N7GfKF2S6QpzVc21Vr91PYxRmkgTCaUT6sBD9pQszRjYhs60SsqujU_OBb7dpNPY6lTv1fxbZbvdvs4ssc"
+              />
+              <div className="absolute top-4 left-4">
+                <div className="bg-surface-container-lowest/80 backdrop-blur-sm px-2 py-1 text-[10px] font-bold text-primary-container">89%</div>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="font-['Inter'] text-[10px] font-bold tracking-[0.2em] text-white/40 uppercase mb-1">OCT 08, 2023</p>
+              <h3 className="font-['Newsreader'] italic text-lg text-on-surface">Gilded Evening</h3>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Vertical Whitespace Transition */}
+        <div className="h-24"></div>
+
+        {/* System Status Bar */}
+        <motion.section 
+          className="bg-surface-container-highest/20 p-8 flex flex-col md:flex-row justify-between items-center gap-6 rounded-[2px]"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="text-center md:text-left">
+            <p className="font-['Inter'] text-[10px] font-bold tracking-widest text-primary-container uppercase mb-2">Total Scans</p>
+            <p className="font-['Newsreader'] text-5xl italic">124</p>
+          </div>
+          <div className="h-[1px] w-12 md:h-12 md:w-[1px] bg-outline-variant/30"></div>
+          <div className="text-center md:text-left">
+            <p className="font-['Inter'] text-[10px] font-bold tracking-widest text-primary-container uppercase mb-2">Average Vibe</p>
+            <p className="font-['Newsreader'] text-5xl italic">82.4%</p>
+          </div>
+          <div className="h-[1px] w-12 md:h-12 md:w-[1px] bg-outline-variant/30"></div>
+          <div className="text-center md:text-left">
+            <p className="font-['Inter'] text-[10px] font-bold tracking-widest text-primary-container uppercase mb-2">Stylist Tier</p>
+            <p className="font-['Newsreader'] text-5xl italic">Vanguard</p>
+          </div>
+        </motion.section>
+
       </main>
 
       <BottomNavBar />

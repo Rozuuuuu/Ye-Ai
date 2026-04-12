@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import TryOn from './pages/TryOn';
 import StyleDNA from './pages/StyleDNA';
 import Archive from './pages/Archive';
+import ArchiveDetail from './pages/ArchiveDetail';
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
         <Route path="/tryon" element={<TryOn />} />
         <Route path="/style" element={<StyleDNA />} />
         <Route path="/archive" element={<Archive />} />
+        <Route path="/archive/:id" element={<ArchiveDetail />} />
       </Routes>
     </BrowserRouter>
   );
