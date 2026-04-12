@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { SpeedInsights } from "@vercel/speed-insights/react"
 import './index.css'
 import App from './App.jsx'
 
@@ -9,6 +10,8 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/service-worker.js')
       .then((reg) => {
+        // Trigger manual update check on every load
+        reg.update();
         console.log('[SW] Registered:', reg.scope);
       })
       .catch((err) => {
@@ -20,5 +23,6 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
+    <SpeedInsights />
   </StrictMode>,
 )

@@ -4,7 +4,7 @@
    Cache-first with network fallback — PWA installable
    ───────────────────────────────────────────────────── */
 
-const CACHE_NAME = 'ai-fashion-judge-v1';
+const CACHE_NAME = 'ai-fashion-judge-v2';
 
 const urlsToCache = [
   '/',
@@ -23,7 +23,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-/* ── Activate: claim all clients immediately ── */
+/* ── Activate: claim all clients immediately and wipe old caches ── */
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -39,18 +39,32 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-/* ── Fetch: cache-first, fall back to network ── */
+/* ── Fetch: Network-First for HTML/Navigation, Cache-First for Assets ── */
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
+  // For HTML documents/navigation, ALWAYS try the network first so we don't get stale Vite JS hashes (White Screen bug)
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, response.clone());
+            return response;
+          });
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // For other assets (CSS, Images, Fonts), use Cache-First Fallback
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
 
       return fetch(event.request)
         .then((response) => {
-          // Cache successful same-origin responses and font CDN
           const url = new URL(event.request.url);
           if (
             response.ok &&
@@ -63,12 +77,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => {
-          // Offline fallback: serve cached index.html for navigation
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
+        .catch(() => null);
     })
   );
 });
