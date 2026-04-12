@@ -1,5 +1,8 @@
-import { motion } from 'framer-motion';
+import { useState, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import Webcam from 'react-webcam';
+
 import TopAppBar from '../components/TopAppBar';
 import BottomNavBar from '../components/BottomNavBar';
 
@@ -30,6 +33,29 @@ const FEATURES = [
 
 export default function TryOn() {
   const navigate = useNavigate();
+  const webcamRef = useRef(null);
+
+  const [facingMode, setFacingMode] = useState('environment');
+  const [webcamReady, setWebcamReady] = useState(false);
+  const [flashScreen, setFlashScreen] = useState(false);
+  const [showAssets, setShowAssets] = useState(false);
+
+  // Toggle camera direction
+  const handleFlip = useCallback(() => {
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'));
+  }, []);
+
+  // Fake capture flash
+  const handleCapture = useCallback(() => {
+    setFlashScreen(true);
+    setTimeout(() => setFlashScreen(false), 200);
+    // Real capture logic would go here
+  }, []);
+
+  // Toggle fake modal for "Assets"
+  const handleAssets = useCallback(() => {
+    setShowAssets((prev) => !prev);
+  }, []);
 
   return (
     <div
@@ -60,12 +86,12 @@ export default function TryOn() {
 
       <TopAppBar />
 
-      <main className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-center relative">
-        <div className="w-full max-w-5xl z-10">
+      <main className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-start relative">
+        <div className="w-full max-w-5xl z-10 flex flex-col items-center h-full">
 
           {/* ── Brutalist header ── */}
           <motion.div
-            className="mb-10"
+            className="mb-8 w-full"
             style={{ borderLeft: '4px solid #ff6b6b', paddingLeft: '1.5rem' }}
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
@@ -74,7 +100,7 @@ export default function TryOn() {
             <h2
               className="font-black tracking-tighter uppercase leading-none"
               style={{
-                fontSize: 'clamp(3.5rem, 10vw, 6rem)',
+                fontSize: 'clamp(2.5rem, 8vw, 4.5rem)',
                 color: '#e5e2e1',
                 fontFamily: 'Inter, sans-serif',
               }}
@@ -83,25 +109,57 @@ export default function TryOn() {
               <span style={{ color: '#ff6b6b' }}>ON</span>
             </h2>
             <p
-              className="italic text-xl mt-4 max-w-xl"
+              className="italic text-lg md:text-xl mt-2 max-w-xl"
               style={{ fontFamily: 'Newsreader, serif', color: 'rgba(229,226,225,0.55)' }}
             >
-              Experience the digital drape. Our high-precision AR engine calculates
-              physics and texture in real-time.
+              Experience the digital drape.
             </p>
           </motion.div>
 
           {/* ── AR Viewfinder canvas ── */}
           <motion.div
-            className="relative w-full overflow-hidden"
+            className="relative w-full overflow-hidden rounded-[8px]"
             style={{
-              aspectRatio: window.innerWidth >= 768 ? '16/9' : '4/5',
+              height: '65vh',
+              minHeight: '400px',
               background: '#0e0e0e',
+              border: '1px solid rgba(255,255,255,0.08)'
             }}
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.12 }}
           >
+            {/* Live Camera Feed inside the canvas */}
+            <Webcam
+              ref={webcamRef}
+              audio={false}
+              videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode }}
+              onUserMedia={() => setWebcamReady(true)}
+              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
+              style={{ opacity: webcamReady ? 1 : 0 }}
+            />
+
+            {/* Flash Effect on Capture */}
+            <AnimatePresence>
+              {flashScreen && (
+                <motion.div
+                  initial={{ opacity: 1 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="absolute inset-0 bg-white z-[100] pointer-events-none"
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Simulated AR Overlay / Skeleton while loading */}
+            {!webcamReady && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-12 pointer-events-none">
+                <span className="material-symbols-outlined animate-pulse text-[#ffb3b0] text-6xl">view_in_ar</span>
+                <p className="mt-4 text-[10px] uppercase tracking-widest text-white/40">Initializing Engine...</p>
+              </div>
+            )}
+
             {/* Corner brackets */}
             {[
               { top: '2rem', left: '2rem',  borderTop: '2px solid #ffb3b0', borderLeft: '2px solid #ffb3b0'  },
@@ -111,69 +169,24 @@ export default function TryOn() {
             ].map((style, i) => (
               <div
                 key={i}
-                className="absolute"
+                className="absolute z-10 pointer-events-none"
                 style={{ width: '24px', height: '24px', ...style }}
               />
             ))}
 
-            {/* Center placeholder */}
-            <div
-              className="w-full h-full flex flex-col items-center justify-center text-center px-12"
-              style={{ cursor: 'crosshair' }}
-            >
-              <div className="relative mb-6">
-                <div
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    background: 'rgba(255,179,176,0.15)',
-                    filter: 'blur(40px)',
-                    transform: 'scale(1.8)',
-                  }}
-                />
-                <span
-                  className="material-symbols-outlined block"
-                  style={{
-                    fontSize: '72px',
-                    color: '#ffb3b0',
-                    fontVariationSettings: "'FILL' 1",
-                    position: 'relative',
-                  }}
-                >
-                  camera
-                </span>
+            {/* Viewfinder Center Target */}
+            {webcamReady && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 mix-blend-overlay opacity-30">
+                <div className="w-[60%] h-[70%] border-[1.5px] border-dashed border-[#ffb3b0] rounded-[100px] flex items-center justify-center">
+                   <p className="text-[#ffb3b0] font-mono text-xs tracking-widest uppercase">Target Body</p>
+                </div>
               </div>
-
-              <h3
-                className="font-bold text-2xl tracking-widest uppercase mb-5"
-                style={{ color: '#ffb3b0', fontFamily: 'Inter, sans-serif' }}
-              >
-                Web AR Engine
-              </h3>
-
-              <div
-                className="text-sm tracking-[0.28em] uppercase max-w-md py-6"
-                style={{
-                  color: 'rgba(229,226,225,0.45)',
-                  borderTop: '1px solid rgba(255,255,255,0.07)',
-                  borderBottom: '1px solid rgba(255,255,255,0.07)',
-                  fontFamily: 'Inter, sans-serif',
-                }}
-              >
-                Web AR will load here
-                <br />
-                <span
-                  className="block mt-2 text-xs"
-                  style={{ opacity: 0.4 }}
-                >
-                  (8th Wall / Model-Viewer Implementation)
-                </span>
-              </div>
-            </div>
+            )}
 
             {/* Technical specs — desktop only */}
             <div
-              className="absolute hidden md:block text-left space-y-1"
-              style={{ bottom: '3rem', left: '3rem' }}
+              className="absolute hidden md:block text-left space-y-1 z-20 pointer-events-none"
+              style={{ top: '2rem', left: '4rem' }}
             >
               {[
                 'Engine: v2.4.0_Vogue',
@@ -183,7 +196,7 @@ export default function TryOn() {
                 <p
                   key={line}
                   className="text-[10px] uppercase tracking-widest"
-                  style={{ color: 'rgba(255,255,255,0.3)', fontFamily: 'Inter, sans-serif' }}
+                  style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'Inter, sans-serif' }}
                 >
                   {line}
                 </p>
@@ -192,12 +205,12 @@ export default function TryOn() {
 
             {/* Floating glass controls */}
             <div
-              className="absolute flex items-center gap-8 px-6 py-4 shadow-2xl"
+              className="absolute flex items-center gap-8 px-6 py-4 shadow-2xl z-30"
               style={{
                 bottom: '2rem',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                background: 'rgba(53, 53, 52, 0.65)',
+                background: 'rgba(32, 31, 31, 0.45)',
                 backdropFilter: 'blur(20px)',
                 WebkitBackdropFilter: 'blur(20px)',
                 border: '1px solid rgba(255,255,255,0.08)',
@@ -208,7 +221,8 @@ export default function TryOn() {
               {/* Flip */}
               <button
                 id="ar-flip-btn"
-                className="flex flex-col items-center gap-1 group"
+                onClick={handleFlip}
+                className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"
                 style={{ color: '#e5e2e1' }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = '#ffb3b0')}
                 onMouseLeave={(e) => (e.currentTarget.style.color = '#e5e2e1')}
@@ -221,7 +235,7 @@ export default function TryOn() {
                 </span>
                 <span
                   className="text-[8px] uppercase tracking-tighter"
-                  style={{ opacity: 0.45, fontFamily: 'Inter, sans-serif' }}
+                  style={{ opacity: 0.6, fontFamily: 'Inter, sans-serif' }}
                 >
                   Flip
                 </span>
@@ -233,11 +247,12 @@ export default function TryOn() {
               {/* Shutter */}
               <button
                 id="ar-capture-btn"
+                onClick={handleCapture}
                 className="flex items-center justify-center transition-all active:scale-95"
                 style={{
                   width: '3.5rem', height: '3.5rem',
                   borderRadius: '50%',
-                  border: '3px solid rgba(255,255,255,0.18)',
+                  border: '3px solid rgba(255,255,255,0.22)',
                 }}
               >
                 <div
@@ -253,13 +268,12 @@ export default function TryOn() {
               {/* Divider */}
               <div style={{ width: '1px', height: '2rem', background: 'rgba(255,255,255,0.12)' }} />
 
-              {/* Assets */}
+              {/* Assets Toggle */}
               <button
                 id="ar-assets-btn"
-                className="flex flex-col items-center gap-1"
-                style={{ color: '#e5e2e1' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#ffb3b0')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#e5e2e1')}
+                onClick={handleAssets}
+                className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
+                style={{ color: showAssets ? '#ffb3b0' : '#e5e2e1' }}
               >
                 <span
                   className="material-symbols-outlined"
@@ -269,17 +283,35 @@ export default function TryOn() {
                 </span>
                 <span
                   className="text-[8px] uppercase tracking-tighter"
-                  style={{ opacity: 0.45, fontFamily: 'Inter, sans-serif' }}
+                  style={{ opacity: 0.6, fontFamily: 'Inter, sans-serif' }}
                 >
                   Assets
                 </span>
               </button>
             </div>
+            
+            {/* Overlay Panel for 'Assets' */}
+            <AnimatePresence>
+              {showAssets && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="absolute right-4 top-4 bg-[#131313]/80 backdrop-blur-md p-4 rounded-[4px] border border-white/5 z-40 w-48 shadow-2xl"
+                >
+                  <p className="text-[10px] tracking-widest uppercase font-bold text-[#ffb3b0] mb-3">Model Library</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className=" aspect-square bg-white/5 rounded-[2px] flex items-center justify-center hover:bg-white/10 cursor-pointer text-xs font-mono text-white/30">N/A</div>
+                    <div className=" aspect-square bg-white/5 rounded-[2px] flex items-center justify-center hover:bg-white/10 cursor-pointer text-xs font-mono text-white/30">N/A</div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
 
           {/* ── Feature cards grid ── */}
           <motion.div
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10"
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10 w-full"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.28 }}
@@ -287,7 +319,7 @@ export default function TryOn() {
             {FEATURES.map(({ accent, label, title, body, borderTop }, i) => (
               <div
                 key={i}
-                className="p-8 space-y-4"
+                className="p-8 space-y-4 rounded-[4px]"
                 style={{
                   background: '#201f1f',
                   borderTop,

@@ -12,16 +12,11 @@ import { getRandomVerdict } from '../data/verdicts';
 const LS_IMAGE = 'afj-last-capture';
 const LS_COUNT = 'afj-capture-count';
 
-const VIDEO_CONSTRAINTS = {
-  facingMode: { ideal: 'environment' },
-  width:  { ideal: 1280 },
-  height: { ideal: 720 },
-};
-
 export default function Home() {
   const webcamRef = useRef(null);
 
   // ── State ───────────────────────────────────────────────
+  const [facingMode,  setFacingMode]  = useState('environment');
   const [webcamReady, setWebcamReady] = useState(false);
   const [webcamError, setWebcamError] = useState(false);
   const [isLoading,   setIsLoading]   = useState(false);
@@ -104,7 +99,7 @@ export default function Home() {
             audio={false}
             screenshotFormat="image/jpeg"
             screenshotQuality={0.72}
-            videoConstraints={VIDEO_CONSTRAINTS}
+            videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode }}
             onUserMedia={() => setWebcamReady(true)}
             onUserMediaError={() => setWebcamError(true)}
             className="w-full h-full object-cover"
@@ -253,14 +248,19 @@ export default function Home() {
               )}
             </motion.button>
 
-            {/* Aspect ratio selector */}
-            <div
-              className="flex gap-4 text-[11px] tracking-tight"
-              style={{ fontFamily: 'Inter, sans-serif' }}
-            >
-              <span className="font-bold" style={{ color: '#ffb3b0' }}>9:16</span>
-              <span style={{ color: 'rgba(255,255,255,0.28)' }}>3:4</span>
-              <span style={{ color: 'rgba(255,255,255,0.28)' }}>1:1</span>
+            {/* Flip camera / Tools */}
+            <div className="flex gap-4 items-center">
+              <motion.button
+                onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
+                whileTap={{ scale: 0.9 }}
+                className="flex items-center justify-center p-3 rounded-full"
+                style={{ background: 'rgba(255,179,176,0.1)', border: '1px solid rgba(255,179,176,0.2)' }}
+                aria-label="Flip camera"
+              >
+                <span className="material-symbols-outlined text-[18px]" style={{ color: '#ffb3b0' }}>
+                  flip_camera_ios
+                </span>
+              </motion.button>
             </div>
           </div>
         </div>
