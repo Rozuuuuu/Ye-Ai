@@ -17,6 +17,7 @@ export default function Home() {
 
   // ── State ───────────────────────────────────────────────
   const [facingMode,  setFacingMode]  = useState('environment');
+  const [flashOn,     setFlashOn]     = useState(false);
   const [webcamReady, setWebcamReady] = useState(false);
   const [webcamError, setWebcamError] = useState(false);
   const [isLoading,   setIsLoading]   = useState(false);
@@ -35,6 +36,17 @@ export default function Home() {
       setCaptureCount(count);
     } catch { /* localStorage not available */ }
   }, []);
+
+  // Update physical device Torch when flash is toggled
+  useEffect(() => {
+    if (!webcamRef.current?.video?.srcObject) return;
+    const track = webcamRef.current.video.srcObject.getVideoTracks()[0];
+    if (track && track.getCapabilities && track.getCapabilities().torch) {
+      try {
+        track.applyConstraints({ advanced: [{ torch: flashOn }] });
+      } catch { /* Suppress constraint errors */ }
+    }
+  }, [flashOn, webcamReady, facingMode]);
 
   // ── Capture handler ─────────────────────────────────────
   const handleCapture = useCallback(() => {
@@ -97,6 +109,7 @@ export default function Home() {
           <Webcam
             ref={webcamRef}
             audio={false}
+            mirrored={facingMode === 'user'}
             screenshotFormat="image/jpeg"
             screenshotQuality={0.72}
             videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode }}
@@ -116,9 +129,14 @@ export default function Home() {
           />
         )}
 
+        {/* Ambient Front Screen Light for selfie-flash effect */}
+        {flashOn && facingMode === 'user' && (
+          <div className="absolute inset-0 bg-[#ffd4a3]/15 mix-blend-screen pointer-events-none z-10" />
+        )}
+
         {/* Vignette / gradient overlay */}
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 z-20 pointer-events-none"
           style={{
             background:
               'linear-gradient(to top, rgba(13,13,13,0.92) 0%, transparent 38%, rgba(13,13,13,0.45) 100%)',
@@ -127,7 +145,7 @@ export default function Home() {
       </div>
 
       {/* ═══ Header ═══ */}
-      <TopAppBar />
+      <TopAppBar flashOn={flashOn} onToggleFlash={() => setFlashOn(!flashOn)} />
 
       {/* ═══ Desktop side-data panel ═══ */}
       <aside

@@ -6,9 +6,17 @@ import Sidebar from './Sidebar';
  * TopAppBar — branded header with menu + flash toggle.
  * Positioned fixed at the top, transparent over the camera feed.
  */
-export default function TopAppBar() {
-  const [flashOn, setFlashOn] = useState(false);
+export default function TopAppBar({ flashOn: externalFlash, onToggleFlash }) {
+  const [internalFlash, setInternalFlash] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+
+  const isControlled = externalFlash !== undefined;
+  const flashOn = isControlled ? externalFlash : internalFlash;
+
+  const handleFlash = () => {
+    if (isControlled) onToggleFlash();
+    else setInternalFlash(!internalFlash);
+  };
 
   return (
     <>
@@ -45,7 +53,7 @@ export default function TopAppBar() {
       {/* Right: Flash toggle */}
       <motion.button
         id="flash-btn"
-        onClick={() => setFlashOn((v) => !v)}
+        onClick={handleFlash}
         style={{ color: flashOn ? '#ffb3b0' : 'rgba(255,255,255,0.5)' }}
         whileTap={{ scale: 0.88 }}
         aria-label={flashOn ? 'Flash on' : 'Flash off'}

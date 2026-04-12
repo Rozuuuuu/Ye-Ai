@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
@@ -36,9 +36,21 @@ export default function TryOn() {
   const webcamRef = useRef(null);
 
   const [facingMode, setFacingMode] = useState('environment');
+  const [flashOn,    setFlashOn]    = useState(false);
   const [webcamReady, setWebcamReady] = useState(false);
   const [flashScreen, setFlashScreen] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
+
+  // Update physical device Torch when flash is toggled
+  useEffect(() => {
+    if (!webcamRef.current?.video?.srcObject) return;
+    const track = webcamRef.current.video.srcObject.getVideoTracks()[0];
+    if (track && track.getCapabilities && track.getCapabilities().torch) {
+      try {
+        track.applyConstraints({ advanced: [{ torch: flashOn }] });
+      } catch { /* Suppress constraint errors */ }
+    }
+  }, [flashOn, webcamReady, facingMode]);
 
   // Toggle camera direction
   const handleFlip = useCallback(() => {
@@ -64,7 +76,7 @@ export default function TryOn() {
     >
       {/* ── Decorative blobs ── */}
       <div
-        className="fixed pointer-events-none"
+        className="fixed pointer-events-none z-0"
         style={{
           top: '20%', right: '-6rem',
           width: '24rem', height: '24rem',
@@ -73,18 +85,13 @@ export default function TryOn() {
           filter: 'blur(100px)',
         }}
       />
-      <div
-        className="fixed pointer-events-none"
-        style={{
-          bottom: '20%', left: '-6rem',
-          width: '24rem', height: '24rem',
-          background: 'rgba(79,59,122,0.07)',
-          borderRadius: '50%',
-          filter: 'blur(100px)',
-        }}
-      />
+      
+      {/* Ambient Front Screen Light for selfie-flash effect */}
+      {flashOn && facingMode === 'user' && (
+        <div className="fixed inset-0 bg-[#ffd4a3]/15 mix-blend-screen pointer-events-none z-10" />
+      )}
 
-      <TopAppBar />
+      <TopAppBar flashOn={flashOn} onToggleFlash={() => setFlashOn(!flashOn)} />
 
       <main className="min-h-screen pt-24 pb-32 px-6 flex flex-col items-center justify-start relative">
         <div className="w-full max-w-5xl z-10 flex flex-col items-center h-full">
@@ -133,6 +140,7 @@ export default function TryOn() {
             <Webcam
               ref={webcamRef}
               audio={false}
+              mirrored={facingMode === 'user'}
               videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode }}
               onUserMedia={() => setWebcamReady(true)}
               className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
