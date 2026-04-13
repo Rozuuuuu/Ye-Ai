@@ -131,6 +131,19 @@ export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict 
     }
   };
 
+  /* Auto-speak when drawer opens with a new verdict */
+  useEffect(() => {
+    if (isOpen && verdict) {
+      const timer = setTimeout(() => {
+        speak(`${verdict.quote} Your vibe score is ${verdict.score}.`, {
+          rate: 0.9,
+          voiceName: 'Google UK English Female'
+        });
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, verdict, speak]);
+
   /* Stop speaking when drawer closes */
   useEffect(() => {
     if (!isOpen && isSpeaking) {

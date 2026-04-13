@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64 } = await req.json()
+    const { imageBase64, colors = [], clothingTags } = await req.json()
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "")
     
     // Initialize Gemini with the API key stored in Supabase secrets
@@ -26,7 +26,16 @@ serve(async (req) => {
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
     
-    const prompt = `You are an expert fashion stylist AI. Analyze this outfit image and provide feedback.
+    // Inject contextual meta-data into prompt if available
+    const colorContext = colors.length 
+      ? `\nDominant hex colors extracted from image: ${colors.join(', ')}` 
+      : "";
+    
+    const lykdatContext = clothingTags
+      ? `\nLykdat AI clothing detection data for extra accuracy: ${JSON.stringify(clothingTags)}`
+      : "";
+
+    const prompt = `You are an expert fashion stylist AI. Analyze this outfit image and provide feedback.${colorContext}${lykdatContext}
     
     Return ONLY a valid JSON object with this exact structure:
     {
