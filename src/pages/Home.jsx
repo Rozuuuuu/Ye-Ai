@@ -10,6 +10,7 @@ import LoadingHanger from '../components/LoadingHanger';
 import { getRandomVerdict } from '../data/verdicts';
 import { useColorExtractor } from '../hooks/useColorExtractor';
 import { useAnalyzeOutfit } from '../hooks/useAnalyzeOutfit';
+import { supabase } from '../lib/supabase';
 
 const LS_IMAGE = 'afj-last-capture';
 const LS_COUNT = 'afj-capture-count';
@@ -34,14 +35,20 @@ export default function Home() {
   const [lastThumb,   setLastThumb]   = useState(null);
   const [captureCount, setCaptureCount] = useState(0);
 
-  // Load persisted thumbnail + count on mount
+  // Load persisted thumbnail + real count from DB on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(LS_IMAGE);
       if (saved) setLastThumb(saved);
-      const count = parseInt(localStorage.getItem(LS_COUNT) || '0', 10);
-      setCaptureCount(count);
-    } catch { /* localStorage not available */ }
+      
+      const fetchStats = async () => {
+        const { count, error } = await supabase
+          .from('captures')
+          .select('*', { count: 'exact', head: true });
+        if (!error) setCaptureCount(count || 0);
+      };
+      fetchStats();
+    } catch { /* Suppress */ }
   }, []);
 
   // Update physical device Torch when flash is toggled
@@ -70,16 +77,21 @@ export default function Home() {
       });
 
       // 2. Pass base64 + extracted colors directly to AI Edge Function
-      const data = await analyze(img, colors);
-      if (!data) throw new Error("AI returned no data");
+      let data = null;
+      try {
+        data = await analyze(img, colors);
+      } catch (aiErr) {
+        console.warn("AI Analysis failed, using mock data:", aiErr);
+      }
 
-      // 3. Normalize backend schema changes back to VerdictDrawer schema expectations
+      // 3. Normalize verdict (AI data or Mock fallback)
+      const finalData = data || getRandomVerdict();
       const normalizedVerdict = {
-        score: data.vibeScore || data.score || 85,
-        quote: data.verdict || data.quote || "A sleek look.",
-        vibe: data.colorMatches?.[0] || data.vibe || 'STYLISH',
-        vibeColor: colors[0] || data.vibeColor || "#ff6b6b",
-        suggestions: (data.suggestions || []).map((s) => ({
+        score: finalData.vibeScore || finalData.score || 85,
+        quote: finalData.verdict || finalData.quote || "A sleek look.",
+        vibe: finalData.colorMatches?.[0] || finalData.vibe || 'STYLISH',
+        vibeColor: colors[0] || finalData.vibeColor || "#ff6b6b",
+        suggestions: (finalData.suggestions || []).map((s) => ({
           icon: "auto_awesome",
           label: "TIP",
           title: "Suggestion",
@@ -88,9 +100,50 @@ export default function Home() {
         }))
       };
 
+      // 4. PERSIST TO CLOUD: Upload Image + Save Record (Always runs if confirmed)
+      try {
+        const fileName = `outfit_${Date.now()}.jpg`;
+        const base64Str = img.replace(/^data:image\/\w+;base64,/, "");
+        const byteCharacters = atob(base64Str);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+        const { error: uploadError } = await supabase.storage
+          .from('outfits')
+          .upload(fileName, blob);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('outfits')
+          .getPublicUrl(fileName);
+
+        const { error: dbError } = await supabase
+          .from('captures')
+          .insert([{
+            image_url: publicUrl,
+            vibe_score: normalizedVerdict.score,
+            verdict_quote: normalizedVerdict.quote,
+            vibe_label: normalizedVerdict.vibe,
+            vibe_color: normalizedVerdict.vibeColor,
+            suggestions: normalizedVerdict.suggestions,
+            palette: colors
+          }]);
+
+        if (!dbError) {
+          setCaptureCount(prev => prev + 1);
+        }
+      } catch (persistenceErr) {
+        console.warn("Cloud persistence failed:", persistenceErr);
+      }
+
       setVerdict(normalizedVerdict);
     } catch (err) {
-      console.warn("AI failed, falling back to mock verdict:", err);
+      console.error("Critical processing error:", err);
       setVerdict(getRandomVerdict());
     } finally {
       setIsLoading(false);

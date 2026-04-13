@@ -21,7 +21,12 @@ serve(async (req) => {
     
     // Initialize Gemini with the API key stored in Supabase secrets
     const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) throw new Error('Missing Gemini API key')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'Missing GEMINI_API_KEY secret' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
     
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
@@ -46,6 +51,7 @@ serve(async (req) => {
       "colorMatches": ["suggested", "color", "palettes"]
     }`
     
+    console.log("Generating AI content...");
     const result = await model.generateContent([
       prompt,
       { inlineData: { data: base64Data, mimeType: "image/jpeg" } }
@@ -69,7 +75,8 @@ serve(async (req) => {
     })
     
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("AI Analysis crash:", error);
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

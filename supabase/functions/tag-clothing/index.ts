@@ -14,6 +14,12 @@ serve(async (req) => {
   try {
     const { imageBase64, service = 'detect' } = await req.json()
     const apiKey = Deno.env.get('LYKDAT_API_KEY')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'Missing LYKDAT_API_KEY secret' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
     
     // Determine the correct API endpoint
     let endpoint = 'https://cloudapi.lykdat.com/v1/detect' // For Item Detection
@@ -29,6 +35,15 @@ serve(async (req) => {
       },
       body: JSON.stringify({ image: imageBase64 })
     })
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Lykdat API error (${response.status}):`, errorText);
+      return new Response(JSON.stringify({ error: `Lykdat API returned ${response.status}`, details: errorText }), {
+        status: response.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
     
     const data = await response.json()
     
@@ -37,7 +52,8 @@ serve(async (req) => {
     })
     
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('Edge Function crash:', error);
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
