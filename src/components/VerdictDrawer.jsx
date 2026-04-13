@@ -209,6 +209,26 @@ export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict 
 
               <div className="px-6 pt-6 pb-28 space-y-8 max-w-3xl mx-auto">
 
+                {/* ── Analyzed Image Thumbnail ── */}
+                {capturedImage && (
+                  <div className="flex justify-center -mb-2">
+                    <div 
+                      className="relative w-28 h-28 md:w-36 md:h-36 rounded-full overflow-hidden shadow-2xl"
+                      style={{ 
+                        border: '2px solid rgba(255,107,107,0.3)',
+                        boxShadow: '0 0 30px rgba(255,107,107,0.15)'
+                      }}
+                    >
+                      <img
+                        src={capturedImage}
+                        alt="Analyzed outfit"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 rounded-full shadow-[inset_0_0_15px_rgba(0,0,0,0.6)] pointer-events-none" />
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Vibe Score pill ── */}
                 <div className="flex justify-center">
                   <div

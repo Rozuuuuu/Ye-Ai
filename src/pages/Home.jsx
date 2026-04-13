@@ -86,6 +86,41 @@ export default function Home() {
     }, 2200);
   }, [isLoading, showDrawer, webcamReady, lastThumb, captureCount]);
 
+  // ── Upload handler ──────────────────────────────────────
+  const fileInputRef = useRef(null);
+  
+  const handleFileUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = event.target.result;
+      
+      // Persist to localStorage
+      try {
+        localStorage.setItem(LS_IMAGE, img);
+        const newCount = captureCount + 1;
+        localStorage.setItem(LS_COUNT, String(newCount));
+        setCaptureCount(newCount);
+        setLastThumb(img);
+      } catch { /* Suppress */ }
+
+      setCapturedImg(img);
+      setVerdict(getRandomVerdict());
+      setIsLoading(true);
+
+      setTimeout(() => {
+        setIsLoading(false);
+        setShowDrawer(true);
+      }, 2200);
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset file input
+    e.target.value = '';
+  }, [captureCount]);
+
   const handleClose = () => {
     setShowDrawer(false);
     setCapturedImg(null);
@@ -125,6 +160,19 @@ export default function Home() {
             style={{
               background:
                 'radial-gradient(ellipse at 35% 55%, rgba(255,107,107,0.07) 0%, transparent 55%), radial-gradient(ellipse at 70% 30%, rgba(209,188,255,0.05) 0%, transparent 50%), #0e0e0e',
+            }}
+          />
+        )}
+
+        {/* Captured Photo Overlay - freezes the frame during analysis/verdict */}
+        {capturedImg && (isLoading || showDrawer) && (
+          <img 
+            src={capturedImg} 
+            alt="Captured frame"
+            className="absolute inset-0 w-full h-full object-cover z-[5]"
+            style={{ 
+              filter: 'brightness(0.78) contrast(1.12)',
+              transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
             }}
           />
         )}
@@ -268,6 +316,25 @@ export default function Home() {
 
             {/* Flip camera / Tools */}
             <div className="flex gap-4 items-center">
+              <input 
+                type="file" 
+                accept="image/*" 
+                ref={fileInputRef} 
+                className="hidden" 
+                onChange={handleFileUpload} 
+              />
+              <motion.button
+                onClick={() => fileInputRef.current?.click()}
+                whileTap={{ scale: 0.9 }}
+                className="flex items-center justify-center p-3 rounded-full"
+                style={{ background: 'rgba(255,179,176,0.1)', border: '1px solid rgba(255,179,176,0.2)' }}
+                aria-label="Upload photo"
+              >
+                <span className="material-symbols-outlined text-[18px]" style={{ color: '#ffb3b0' }}>
+                  upload_file
+                </span>
+              </motion.button>
+              
               <motion.button
                 onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
                 whileTap={{ scale: 0.9 }}
