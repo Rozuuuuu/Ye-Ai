@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaQuery } from 'react-responsive';
+import { useSpeech } from '../hooks/useSpeech';
 
 /* ─────────────────────────────────────────────────── */
 /*  Canvas-based palette extractor (no external dep)  */
@@ -115,6 +116,27 @@ function SuggestionCard({ suggestion }) {
 export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict }) {
   const isDesktop = useMediaQuery({ minWidth: 1024 });
   const [palette, setPalette] = useState([]);
+  
+  /* TTS Hook */
+  const { speak, stop, isSpeaking } = useSpeech();
+
+  const handleSpeak = () => {
+    if (isSpeaking) {
+      stop();
+    } else {
+      speak(`${verdict.quote} Your vibe score is ${verdict.score}.`, {
+        rate: 0.9,
+        voiceName: 'Google UK English Female'
+      });
+    }
+  };
+
+  /* Stop speaking when drawer closes */
+  useEffect(() => {
+    if (!isOpen && isSpeaking) {
+      stop();
+    }
+  }, [isOpen, isSpeaking, stop]);
 
   /* Extract palette whenever a new image arrives */
   useEffect(() => {
@@ -250,7 +272,7 @@ export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict 
                 {/* ── Main editorial quote ── */}
                 <div className="text-center px-2 md:px-8">
                   <p
-                    className="italic leading-tight"
+                    className="italic leading-tight mb-4"
                     style={{
                       fontFamily: 'Newsreader, serif',
                       fontSize: 'clamp(1.55rem, 5vw, 2.75rem)',
@@ -260,6 +282,28 @@ export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict 
                   >
                     "{verdict.quote}"
                   </p>
+
+                  <button 
+                    onClick={handleSpeak}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full transition-all"
+                    style={{
+                      background: isSpeaking ? 'rgba(255,107,107,0.15)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${isSpeaking ? 'rgba(255,107,107,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    <span 
+                      className="material-symbols-outlined text-[16px]" 
+                      style={{ color: isSpeaking ? '#ff6b6b' : 'rgba(255,255,255,0.5)' }}
+                    >
+                      {isSpeaking ? 'volume_off' : 'volume_up'}
+                    </span>
+                    <span 
+                      className="text-[10px] font-bold tracking-[0.1em] uppercase"
+                      style={{ color: isSpeaking ? '#ff6b6b' : 'rgba(255,255,255,0.5)' }}
+                    >
+                      {isSpeaking ? 'STOP AUDIO' : 'LISTEN TO VERDICT'}
+                    </span>
+                  </button>
 
                   {/* Vibe label with rules */}
                   <div className="flex items-center justify-center gap-3 mt-5">
