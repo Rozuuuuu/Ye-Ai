@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/model-viewer": "^4.2.0",
     "@mediapipe/holistic": "^0.5.1675471629",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
