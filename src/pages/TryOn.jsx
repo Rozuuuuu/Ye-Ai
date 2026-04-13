@@ -5,6 +5,7 @@ import Webcam from 'react-webcam';
 
 import TopAppBar from '../components/TopAppBar';
 import BottomNavBar from '../components/BottomNavBar';
+import ARTryOn from '../components/ARTryOn';
 
 /* ── Info feature cards ── */
 const FEATURES = [
@@ -37,7 +38,7 @@ export default function TryOn() {
 
   const [facingMode, setFacingMode] = useState('environment');
   const [flashOn,    setFlashOn]    = useState(false);
-  const [webcamReady, setWebcamReady] = useState(false);
+  const [webcamReady, setWebcamReady] = useState(true);
   const [flashScreen, setFlashScreen] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
 
@@ -136,16 +137,7 @@ export default function TryOn() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.12 }}
           >
-            {/* Live Camera Feed inside the canvas */}
-            <Webcam
-              ref={webcamRef}
-              audio={false}
-              mirrored={facingMode === 'user'}
-              videoConstraints={{ width: { ideal: 1280 }, height: { ideal: 720 }, facingMode }}
-              onUserMedia={() => setWebcamReady(true)}
-              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
-              style={{ opacity: webcamReady ? 1 : 0 }}
-            />
+            {/* Live Camera Feed is now managed natively inside ARTryOn */}
 
             {/* Flash Effect on Capture */}
             <AnimatePresence>
@@ -160,12 +152,9 @@ export default function TryOn() {
               )}
             </AnimatePresence>
 
-            {/* Simulated AR Overlay / Skeleton while loading */}
-            {!webcamReady && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-12 pointer-events-none">
-                <span className="material-symbols-outlined animate-pulse text-[#ffb3b0] text-6xl">view_in_ar</span>
-                <p className="mt-4 text-[10px] uppercase tracking-widest text-white/40">Initializing Engine...</p>
-              </div>
+            {/* 3D AR Layer over the camera feed */}
+            {webcamReady && (
+              <ARTryOn />
             )}
 
             {/* Corner brackets */}
