@@ -109,7 +109,7 @@ export default function Sidebar({ isOpen, onClose }) {
                 <div className="pt-6 border-t border-white/5 space-y-3">
                   <a className="block font-['Inter'] text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors" href="#">Legal & Privacy</a>
                   <a className="block font-['Inter'] text-[11px] uppercase tracking-widest text-white/40 hover:text-white transition-colors" href="#">Technical Support</a>
-                  <a className="block font-['Inter'] text-[11px] uppercase tracking-widest text-[#ffb4ab]/60 hover:text-[#ffb4ab] transition-colors mt-8 font-bold" href="#">Sign Out</a>
+                  <a className="block font-['Inter'] text-[11px] uppercase tracking-widest text-[#ffb4ab]/60 hover:text-[#ffb4ab] transition-colors mt-8 font-bold" href="#">Login</a>
                 </div>
               </div>
             </nav>

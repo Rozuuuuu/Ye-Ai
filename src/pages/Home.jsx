@@ -8,6 +8,8 @@ import ViewfinderOverlay from '../components/ViewfinderOverlay';
 import VerdictDrawer from '../components/VerdictDrawer';
 import LoadingHanger from '../components/LoadingHanger';
 import { getRandomVerdict } from '../data/verdicts';
+import { useColorExtractor } from '../hooks/useColorExtractor';
+import { useAnalyzeOutfit } from '../hooks/useAnalyzeOutfit';
 
 const LS_IMAGE = 'afj-last-capture';
 const LS_COUNT = 'afj-capture-count';
@@ -15,12 +17,17 @@ const LS_COUNT = 'afj-capture-count';
 export default function Home() {
   const webcamRef = useRef(null);
 
+  // ── Hooks ───────────────────────────────────────────────
+  const { extract } = useColorExtractor();
+  const { analyze } = useAnalyzeOutfit();
+
   // ── State ───────────────────────────────────────────────
   const [facingMode,  setFacingMode]  = useState('environment');
   const [flashOn,     setFlashOn]     = useState(false);
   const [webcamReady, setWebcamReady] = useState(false);
   const [webcamError, setWebcamError] = useState(false);
   const [isLoading,   setIsLoading]   = useState(false);
+  const [isPreviewing,setIsPreviewing]= useState(false);
   const [showDrawer,  setShowDrawer]  = useState(false);
   const [capturedImg, setCapturedImg] = useState(null);
   const [verdict,     setVerdict]     = useState(null);
@@ -48,43 +55,64 @@ export default function Home() {
     }
   }, [flashOn, webcamReady, facingMode]);
 
+  // ── Helper to process captured image via custom hooks ──
+  const processImageAndAnalyze = async (img) => {
+    setCapturedImg(img);
+    setIsLoading(true);
+
+    try {
+      // 1. Extract colors reliably using Image object
+      const colors = await new Promise((resolve) => {
+        const imageElement = new Image();
+        imageElement.src = img;
+        imageElement.onload = () => resolve(extract(imageElement));
+        imageElement.onerror = () => resolve([]);
+      });
+
+      // 2. Pass base64 + extracted colors directly to AI Edge Function
+      const data = await analyze(img, colors);
+      if (!data) throw new Error("AI returned no data");
+
+      // 3. Normalize backend schema changes back to VerdictDrawer schema expectations
+      const normalizedVerdict = {
+        score: data.vibeScore || data.score || 85,
+        quote: data.verdict || data.quote || "A sleek look.",
+        vibe: data.colorMatches?.[0] || data.vibe || 'STYLISH',
+        vibeColor: colors[0] || data.vibeColor || "#ff6b6b",
+        suggestions: (data.suggestions || []).map((s) => ({
+          icon: "auto_awesome",
+          label: "TIP",
+          title: "Suggestion",
+          description: typeof s === 'string' ? s : s.description || "Incorporate this tip.",
+          active: true
+        }))
+      };
+
+      setVerdict(normalizedVerdict);
+    } catch (err) {
+      console.warn("AI failed, falling back to mock verdict:", err);
+      setVerdict(getRandomVerdict());
+    } finally {
+      setIsLoading(false);
+      setShowDrawer(true);
+    }
+  };
+
   // ── Capture handler ─────────────────────────────────────
-  const handleCapture = useCallback(() => {
-    if (isLoading || showDrawer) return;
+  const handleCapture = useCallback(async () => {
+    if (isLoading || showDrawer || isPreviewing) return;
 
     let img = null;
-
-    // Attempt webcam screenshot
     if (webcamRef.current && webcamReady) {
       img = webcamRef.current.getScreenshot();
     }
-
-    // Fallback: reuse last thumbnail
     if (!img && lastThumb) img = lastThumb;
 
-    // Persist to localStorage
     if (img) {
-      try {
-        localStorage.setItem(LS_IMAGE, img);
-        const newCount = captureCount + 1;
-        localStorage.setItem(LS_COUNT, String(newCount));
-        setCaptureCount(newCount);
-        setLastThumb(img);
-      } catch {
-        // Storage quota exceeded — proceed without persisting
-      }
+      setCapturedImg(img);
+      setIsPreviewing(true);
     }
-
-    setCapturedImg(img);
-    setVerdict(getRandomVerdict());
-    setIsLoading(true);
-
-    // Simulate 2.2 s AI analysis
-    setTimeout(() => {
-      setIsLoading(false);
-      setShowDrawer(true);
-    }, 2200);
-  }, [isLoading, showDrawer, webcamReady, lastThumb, captureCount]);
+  }, [isLoading, showDrawer, isPreviewing, webcamReady, lastThumb]);
 
   // ── Upload handler ──────────────────────────────────────
   const fileInputRef = useRef(null);
@@ -94,32 +122,36 @@ export default function Home() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const img = event.target.result;
-      
-      // Persist to localStorage
+      setCapturedImg(img);
+      setIsPreviewing(true);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, []);
+
+  // ── Preview Handlers ────────────────────────────────────
+  const handleConfirmPreview = async () => {
+    setIsPreviewing(false);
+    
+    // Persist finalized image
+    if (capturedImg) {
       try {
-        localStorage.setItem(LS_IMAGE, img);
+        localStorage.setItem(LS_IMAGE, capturedImg);
         const newCount = captureCount + 1;
         localStorage.setItem(LS_COUNT, String(newCount));
         setCaptureCount(newCount);
-        setLastThumb(img);
-      } catch { /* Suppress */ }
+        setLastThumb(capturedImg);
+      } catch {}
+      await processImageAndAnalyze(capturedImg);
+    }
+  };
 
-      setCapturedImg(img);
-      setVerdict(getRandomVerdict());
-      setIsLoading(true);
-
-      setTimeout(() => {
-        setIsLoading(false);
-        setShowDrawer(true);
-      }, 2200);
-    };
-    reader.readAsDataURL(file);
-    
-    // Reset file input
-    e.target.value = '';
-  }, [captureCount]);
+  const handleRetake = () => {
+    setCapturedImg(null);
+    setIsPreviewing(false);
+  };
 
   const handleClose = () => {
     setShowDrawer(false);
@@ -164,8 +196,8 @@ export default function Home() {
           />
         )}
 
-        {/* Captured Photo Overlay - freezes the frame during analysis/verdict */}
-        {capturedImg && (isLoading || showDrawer) && (
+        {/* Captured Photo Overlay - freezes the frame during analysis/verdict/preview */}
+        {capturedImg && (isLoading || showDrawer || isPreviewing) && (
           <img 
             src={capturedImg} 
             alt="Captured frame"
@@ -221,39 +253,94 @@ export default function Home() {
       <div className="fixed bottom-0 left-0 w-full z-20 px-6 pb-24 pt-6">
         <div className="max-w-md mx-auto flex flex-col items-center">
 
-          {/* PRIMARY ACTION BUTTON */}
-          <motion.button
-            id="judge-btn"
-            onClick={handleCapture}
-            disabled={isLoading || showDrawer}
-            className="relative w-full mb-6 disabled:cursor-not-allowed"
-            whileTap={{ scale: 0.97 }}
-          >
-            {/* Ambient glow */}
-            <div
-              className="absolute inset-0 blur-[22px] opacity-35"
-              style={{ background: 'rgba(255,107,107,0.9)', borderRadius: '2px' }}
-            />
-            {/* Glass face */}
-            <div
-              className="relative flex items-center justify-center py-5 px-10 transition-opacity"
-              style={{
-                background: 'rgba(255, 107, 107, 0.18)',
-                backdropFilter: 'blur(22px)',
-                WebkitBackdropFilter: 'blur(22px)',
-                borderLeft: '2px solid rgba(255,179,176,0.7)',
-                boxShadow: '0 0 48px rgba(255,107,107,0.12), inset 0 0 24px rgba(255,107,107,0.06)',
-                opacity: isLoading || showDrawer ? 0.55 : 1,
-              }}
+          {/* MAIN ACTIONS */}
+          {!isPreviewing ? (
+            <motion.button
+              id="judge-btn"
+              onClick={handleCapture}
+              disabled={isLoading || showDrawer}
+              className="relative w-full mb-6 disabled:cursor-not-allowed"
+              whileTap={{ scale: 0.97 }}
             >
-              <span
-                className="font-extrabold tracking-[0.28em] text-lg uppercase"
-                style={{ color: '#6d0010', fontFamily: 'Inter, sans-serif' }}
+              {/* Ambient glow */}
+              <div
+                className="absolute inset-0 blur-[22px] opacity-35"
+                style={{ background: 'rgba(255,107,107,0.9)', borderRadius: '2px' }}
+              />
+              {/* Glass face */}
+              <div
+                className="relative flex items-center justify-center py-5 px-10 transition-opacity"
+                style={{
+                  background: 'rgba(255, 107, 107, 0.18)',
+                  backdropFilter: 'blur(22px)',
+                  WebkitBackdropFilter: 'blur(22px)',
+                  borderLeft: '2px solid rgba(255,179,176,0.7)',
+                  boxShadow: '0 0 48px rgba(255,107,107,0.12), inset 0 0 24px rgba(255,107,107,0.06)',
+                  opacity: isLoading || showDrawer ? 0.55 : 1,
+                }}
               >
-                JUDGE THIS FIT
-              </span>
+                <span
+                  className="font-extrabold tracking-[0.28em] text-lg uppercase"
+                  style={{ color: '#6d0010', fontFamily: 'Inter, sans-serif' }}
+                >
+                  CAPTURE FIT
+                </span>
+              </div>
+            </motion.button>
+          ) : (
+            <div className="flex w-full gap-4 mb-6">
+              {/* Retake Button */}
+              <motion.button
+                onClick={handleRetake}
+                className="flex-[1.5] relative flex items-center justify-center py-4 px-2"
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  backdropFilter: 'blur(22px)',
+                  WebkitBackdropFilter: 'blur(22px)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '2px',
+                }}
+              >
+                <span className="material-symbols-outlined text-[18px] mr-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  close
+                </span>
+                <span className="font-extrabold tracking-[0.1em] text-sm uppercase" style={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'Inter, sans-serif' }}>
+                  TAKE AGAIN
+                </span>
+              </motion.button>
+
+              {/* Confirm Button */}
+              <motion.button
+                onClick={handleConfirmPreview}
+                className="flex-[2] relative flex items-center justify-center py-4 px-2"
+                whileTap={{ scale: 0.95 }}
+              >
+                <div
+                  className="absolute inset-0 blur-[15px] opacity-30"
+                  style={{ background: 'rgba(255,107,107,0.8)', borderRadius: '2px' }}
+                />
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{
+                    background: 'rgba(255, 107, 107, 0.25)',
+                    backdropFilter: 'blur(22px)',
+                    WebkitBackdropFilter: 'blur(22px)',
+                    borderLeft: '2px solid rgba(255,179,176,0.8)',
+                    boxShadow: '0 0 30px rgba(255,107,107,0.2)',
+                    borderRadius: '2px',
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[18px] mr-2" style={{ color: '#ffb3b0' }}>
+                    check
+                  </span>
+                  <span className="font-extrabold tracking-[0.1em] text-sm uppercase" style={{ color: '#ffb3b0', fontFamily: 'Inter, sans-serif' }}>
+                    CONFIRM
+                  </span>
+                </div>
+              </motion.button>
             </div>
-          </motion.button>
+          )}
 
           {/* Powered-by label */}
           <p
