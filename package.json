@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@mediapipe/holistic": "^0.5.1675471629",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.103.0",
     "@vercel/speed-insights": "^2.0.0",
     "colorthief": "^3.3.1",

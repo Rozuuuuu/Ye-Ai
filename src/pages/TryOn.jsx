@@ -137,25 +137,8 @@ export default function TryOn() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.12 }}
           >
-            {/* Live Camera Feed is now managed natively inside ARTryOn */}
-
-            {/* Flash Effect on Capture */}
-            <AnimatePresence>
-              {flashScreen && (
-                <motion.div
-                  initial={{ opacity: 1 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="absolute inset-0 bg-white z-[100] pointer-events-none"
-                />
-              )}
-            </AnimatePresence>
-
-            {/* 3D AR Layer over the camera feed */}
-            {webcamReady && (
-              <ARTryOn />
-            )}
+            {/* 3D Model Viewer (AR) */}
+            <ARTryOn />
 
             {/* Corner brackets */}
             {[
