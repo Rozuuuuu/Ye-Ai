@@ -106,55 +106,72 @@ export default function ARTryOn() {
         const rightHip = lms.poseLandmarks[24];
 
         if (leftShoulder && rightShoulder && leftHip && rightHip) {
-          // --- 1. Calculate Target Position in MediaPipe Normalized Space (0 to 1) ---
-          // We use the center of the torso (between shoulders and hips)
-          const targetX = (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4;
-          const targetY = (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4;
+          // --- 1. Calculate Torso Center in MediaPipe Normalized Space (0 to 1) ---
+          const torsoMidX = (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4;
+          const torsoMidY = (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4;
           
-          // --- 2. Convert to Normalized Device Coordinates (NDC) (-1 to 1) ---
-          // MediaPipe X is 0 (left) to 1 (right). NDC X is -1 (left) to 1 (right).
-          const ndcX = (targetX * 2) - 1;
-          // MediaPipe Y is 0 (top) to 1 (bottom). NDC Y is 1 (top) to -1 (bottom). INVERTED!
-          const ndcY = -(targetY * 2) + 1; 
+          // --- 2. Calculate Shoulder Width in Normalized Space ---
+          const shoulderWidthMP = Math.sqrt(
+            Math.pow(rightShoulder.x - leftShoulder.x, 2) +
+            Math.pow(rightShoulder.y - leftShoulder.y, 2)
+          );
+
+          // --- 3. Dynamic Depth Estimation (CRITICAL FOR DISTANCE) ---
+          // A larger shoulderWidthMP means the user is closer to the camera.
+          // Calibrate these values based on your scene and desired min/max distances.
+          const minShoulderWidth = 0.1; // Smallest expected shoulder width (user far away)
+          const maxShoulderWidth = 0.4; // Largest expected shoulder width (user close)
+          const minDepthZ = 0.95;       // Model far away (closer to camera.far)
+          const maxDepthZ = 0.7;        // Model close (closer to camera.near)
+
+          // Clamp shoulderWidthMP to avoid extreme values
+          const clampedShoulderWidth = Math.max(minShoulderWidth, Math.min(maxShoulderWidth, shoulderWidthMP));
           
-          // --- 3. Unproject to 3D World Space ---
-          // Create a vector with the NDC coordinates and a chosen depth (Z).
-          // 0.9 pushes it away slightly. Adjust if it looks too small/large.
-          const depthZ = 0.9; 
-          const targetVector = new THREE.Vector3(ndcX, ndcY, depthZ);
+          // Linear interpolation for depthZ based on shoulder width
+          const normalizedWidth = (clampedShoulderWidth - minShoulderWidth) / (maxShoulderWidth - minShoulderWidth);
+          const dynamicDepthZ = minDepthZ + (maxDepthZ - minDepthZ) * normalizedWidth;
+
+          // --- 4. Convert to Normalized Device Coordinates (NDC) (-1 to 1) ---
+          const ndcX = (torsoMidX * 2) - 1;
+          const ndcY = -(torsoMidY * 2) + 1; // MediaPipe Y inverted vs NDC Y
           
-          // Convert the 2D screen point to a 3D world point
+          // --- 5. Unproject to 3D World Space ---
+          const targetVector = new THREE.Vector3(ndcX, ndcY, dynamicDepthZ);
           targetVector.unproject(camera);
 
-          // --- 4. Apply Position with Smoothing ---
+          // --- 6. Apply Position with Smoothing and Model Offset ---
           if (!wrapper.userData.targetPos) {
             wrapper.userData.targetPos = new THREE.Vector3();
           }
           wrapper.userData.targetPos.copy(targetVector);
           
-          // Offset to align model neck with actual neck
-          const offsetY = -0.5; 
+          // TWEAK THESE OFFSETS to fine-tune the model's position relative to the torso center.
+          const offsetX = 0.0;  // Adjust if model is off-center horizontally
+          const offsetY = -0.3; // Adjust to move model up/down relative to the torso point
+          const offsetZ = 0.0;  // Adjust to move model forward/backward
+
+          wrapper.userData.targetPos.x += offsetX;
           wrapper.userData.targetPos.y += offsetY;
+          wrapper.userData.targetPos.z += offsetZ;
 
           wrapper.position.lerp(wrapper.userData.targetPos, 0.15);
 
-          // --- 5. Calculate and Apply Rotation ---
+          // --- 7. Calculate and Apply Rotation (Corrected for Upside Down) ---
           const dx = rightShoulder.x - leftShoulder.x;
           const dy = rightShoulder.y - leftShoulder.y;
-          // Calculate angle. dy is inverted because MediaPipe Y is down, Three.js Y is up.
-          const angle = Math.atan2(-dy, dx); 
+          const angleZ = Math.atan2(-dy, dx); 
           
-          // Smooth rotation using slerp (Spherical Linear Interpolation) to prevent gimbal lock / erratic spinning
-          const targetQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, angle));
+          // Apply 180-degree X rotation to fix upside-down GLTF models (Y-up convention)
+          const initialXRotation = Math.PI;
+          const targetQuaternion = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(initialXRotation, 0, angleZ, 'XYZ') 
+          );
           wrapper.quaternion.slerp(targetQuaternion, 0.15);
           
-          // --- 6. Scale based on shoulder width ---
-          const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
-          
-          // Base size and growth rate multipliers
-          const baseScale = 0.5;
-          const scaleMultiplier = 5.0; 
-          const targetScale = baseScale + (shoulderWidth * scaleMultiplier); 
+          // --- 8. Scale based on shoulder width ---
+          const baseScale = 0.8;       // Minimum scale when user is far
+          const scaleMultiplier = 1.5;  // How much it grows based on shoulder width
+          const targetScale = baseScale + (shoulderWidthMP * scaleMultiplier); 
           
           const currentScale = wrapper.scale.x;
           wrapper.scale.setScalar(currentScale + (targetScale - currentScale) * 0.15);
@@ -203,11 +220,16 @@ export default function ARTryOn() {
       (gltf) => {
         const rawModel = gltf.scene;
 
+        // --- Initial rotation fix for upside-down models ---
+        // If your model is consistently upside down, uncomment and adjust:
+        // rawModel.rotation.x = Math.PI; // Rotate 180° around X-axis
+        // rawModel.rotation.y = Math.PI; // Rotate 180° around Y-axis if needed
+
         // Auto-scale raw model
         const box    = new THREE.Box3().setFromObject(rawModel);
         const size   = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale  = 1.6 / maxDim;
+        const scale  = 1.6 / maxDim; // This initial scale might need adjustment
         rawModel.scale.setScalar(scale);
 
         // Centre the raw geometry at the origin (0,0,0)
@@ -215,13 +237,13 @@ export default function ARTryOn() {
         rawModel.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
 
         // CREATE A WRAPPER GROUP
-        // We will apply all MediaPipe Body Tracking movement to this wrapper. 
-        // This stops the tracking from destroying the model's precise geometric centering.
+        // All MediaPipe body tracking transforms are applied to the wrapper,
+        // preserving the model's internal centering.
         const wrapper = new THREE.Group();
         wrapper.add(rawModel);
 
         scene.add(wrapper);
-        modelRef.current = wrapper; // Set the wrapper as the target for our animate loop
+        modelRef.current = wrapper;
         
         setLoaded(true);
         setStatus('');
@@ -272,9 +294,9 @@ export default function ARTryOn() {
           >
             <span
               className="w-1.5 h-1.5 rounded-full animate-pulse"
-              style={{ background: landmarks?.poseLandmarks ? '#4ade80' : '#ff6b6b' }}
+              style={{ background: !isLoaded ? '#fbbf24' : (landmarks?.poseLandmarks ? '#4ade80' : '#ff6b6b') }}
             />
-            {landmarks?.poseLandmarks ? 'Body Tracked' : 'Scanning…'}
+            {!isLoaded ? 'Loading AI Model…' : (landmarks?.poseLandmarks ? 'Body Tracked' : 'Scanning…')}
           </div>
         </div>
       )}
