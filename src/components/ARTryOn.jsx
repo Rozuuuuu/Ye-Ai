@@ -4,8 +4,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useMediaPipe } from '../hooks/useMediaPipe';
 
 const MODELS = [
-  { id: 'jacket', label: 'Jacket', src: '/models/clothing_jacket.glb' },
-  { id: 'hoodie', label: 'Hoodie', src: '/models/HoodieJacket.glb' },
+  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb' },
+  { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb' },
+  { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb' },
 ];
 
 export default function ARTryOn() {
@@ -116,27 +117,35 @@ export default function ARTryOn() {
             Math.pow(rightShoulder.y - leftShoulder.y, 2)
           );
 
-          // --- 3. Dynamic Depth Estimation (CRITICAL FOR DISTANCE) ---
-          // A larger shoulderWidthMP means the user is closer to the camera.
-          // Calibrate these values based on your scene and desired min/max distances.
-          const minShoulderWidth = 0.1; // Smallest expected shoulder width (user far away)
-          const maxShoulderWidth = 0.4; // Largest expected shoulder width (user close)
-          const minDepthZ = 0.95;       // Model far away (closer to camera.far)
-          const maxDepthZ = 0.7;        // Model close (closer to camera.near)
+          // --- 3. Auto-Depth: Focal Length Scaling (Inverse Square Law) ---
+          // CALIBRATION: Stand at a comfortable distance, console.log(shoulderWidthMP),
+          // and set that value as referenceShoulderWidthMP.
+          const referenceShoulderWidthMP = 0.2;    // Shoulder width at reference distance
+          const referenceDistanceWorldUnits = 2.0; // World units at that reference width
+          const minDistanceWorldUnits = 0.5;       // Closest allowed (prevents clipping)
+          const maxDistanceWorldUnits = 5.0;       // Farthest allowed (prevents disappearing)
 
-          // Clamp shoulderWidthMP to avoid extreme values
-          const clampedShoulderWidth = Math.max(minShoulderWidth, Math.min(maxShoulderWidth, shoulderWidthMP));
-          
-          // Linear interpolation for depthZ based on shoulder width
-          const normalizedWidth = (clampedShoulderWidth - minShoulderWidth) / (maxShoulderWidth - minShoulderWidth);
-          const dynamicDepthZ = minDepthZ + (maxDepthZ - minDepthZ) * normalizedWidth;
+          let currentDistanceWorldUnits;
+          if (shoulderWidthMP > 0.01) {
+            // Inverse relationship: wider shoulders = closer distance
+            currentDistanceWorldUnits = referenceDistanceWorldUnits * (referenceShoulderWidthMP / shoulderWidthMP);
+            currentDistanceWorldUnits = Math.max(minDistanceWorldUnits, Math.min(maxDistanceWorldUnits, currentDistanceWorldUnits));
+          } else {
+            currentDistanceWorldUnits = maxDistanceWorldUnits;
+          }
+
+          // Convert world distance to NDC Z parameter (0 to 1) for unproject
+          const near = camera.near;
+          const far = camera.far;
+          const depthZParam = (currentDistanceWorldUnits - near) / (far - near);
+          const clampedDepthZParam = Math.max(0, Math.min(1, depthZParam));
 
           // --- 4. Convert to Normalized Device Coordinates (NDC) (-1 to 1) ---
           const ndcX = (torsoMidX * 2) - 1;
-          const ndcY = -(torsoMidY * 2) + 1; // MediaPipe Y inverted vs NDC Y
+          const ndcY = -(torsoMidY * 2) + 1;
           
           // --- 5. Unproject to 3D World Space ---
-          const targetVector = new THREE.Vector3(ndcX, ndcY, dynamicDepthZ);
+          const targetVector = new THREE.Vector3(ndcX, ndcY, clampedDepthZParam);
           targetVector.unproject(camera);
 
           // --- 6. Apply Position with Smoothing and Model Offset ---
@@ -145,10 +154,10 @@ export default function ARTryOn() {
           }
           wrapper.userData.targetPos.copy(targetVector);
           
-          // TWEAK THESE OFFSETS to fine-tune the model's position relative to the torso center.
-          const offsetX = 0.0;  // Adjust if model is off-center horizontally
-          const offsetY = -0.3; // Adjust to move model up/down relative to the torso point
-          const offsetZ = 0.0;  // Adjust to move model forward/backward
+          // TWEAK THESE OFFSETS (in world units)
+          const offsetX = 0.0;  // Horizontal alignment
+          const offsetY = -0.3; // Vertical alignment (negative = down)
+          const offsetZ = 0.0;  // Depth alignment (negative = toward camera)
 
           wrapper.userData.targetPos.x += offsetX;
           wrapper.userData.targetPos.y += offsetY;
@@ -156,22 +165,22 @@ export default function ARTryOn() {
 
           wrapper.position.lerp(wrapper.userData.targetPos, 0.15);
 
-          // --- 7. Calculate and Apply Rotation (Corrected for Upside Down) ---
+          // --- 7. Calculate and Apply Rotation ---
           const dx = rightShoulder.x - leftShoulder.x;
           const dy = rightShoulder.y - leftShoulder.y;
           const angleZ = Math.atan2(-dy, dx); 
           
-          // Apply 180-degree X rotation to fix upside-down GLTF models (Y-up convention)
-          const initialXRotation = Math.PI;
+          const initialXRotation = Math.PI; // 180° fix for Y-up GLTF convention
           const targetQuaternion = new THREE.Quaternion().setFromEuler(
             new THREE.Euler(initialXRotation, 0, angleZ, 'XYZ') 
           );
           wrapper.quaternion.slerp(targetQuaternion, 0.15);
           
-          // --- 8. Scale based on shoulder width ---
-          const baseScale = 0.8;       // Minimum scale when user is far
-          const scaleMultiplier = 1.5;  // How much it grows based on shoulder width
-          const targetScale = baseScale + (shoulderWidthMP * scaleMultiplier); 
+          // --- 8. Scale proportional to estimated world distance ---
+          // At referenceDistance the model should look correct with baseScaleFactor.
+          // As distance increases, scale increases proportionally (perspective compensation).
+          const baseScaleFactor = 0.8; // Scale at 1 world unit distance
+          const targetScale = baseScaleFactor * currentDistanceWorldUnits;
           
           const currentScale = wrapper.scale.x;
           wrapper.scale.setScalar(currentScale + (targetScale - currentScale) * 0.15);
