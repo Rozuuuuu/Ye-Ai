@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useMediaPipe } from '../hooks/useMediaPipe';
+import { createPositionFilters, createScalarFilter } from '../utils/OneEuroFilter';
 
 const MODELS = [
   { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb' },
@@ -9,38 +10,43 @@ const MODELS = [
   { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb' },
 ];
 
-export default function ARTryOn() {
-  const canvasRef    = useRef(null);
-  const videoRef     = useRef(null);
-  const sceneRef     = useRef(null);
-  const rendererRef  = useRef(null);
-  const cameraRef    = useRef(null);
-  const modelRef     = useRef(null);
-  const animFrameRef = useRef(null);
+// ── Mobile / Desktop detection ──────────────────────────────────────────────
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // videoElement is set once the camera stream is playing,
-  // so useMediaPipe only starts when there is real video data.
+const CONFIG = isMobile
+  ? { modelComplexity: 0, lerpFactor: 0.25, minCutoff: 0.8, beta: 0.01, gracePeriodFrames: 10 }
+  : { modelComplexity: 1, lerpFactor: 0.15, minCutoff: 1.0, beta: 0.007, gracePeriodFrames: 15 };
+
+export default function ARTryOn() {
+  const canvasRef     = useRef(null);
+  const videoRef      = useRef(null);
+  const sceneRef      = useRef(null);
+  const rendererRef   = useRef(null);
+  const cameraRef     = useRef(null);
+  const modelRef      = useRef(null);
+  const animFrameRef  = useRef(null);
+  const filtersRef    = useRef(null); // One-Euro filters
+  const lostFramesRef = useRef(0);    // Graceful degradation counter
+
   const [videoElement, setVideoElement] = useState(null);
   const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const [status, setStatus]               = useState('Initializing…');
   const [loaded, setLoaded]               = useState(false);
 
-  // ── Body tracking (reads landmarksRef every frame with zero re-renders) ──
+  // ── Body tracking ─────────────────────────────────────────────────────────
   const { landmarks, isLoaded } = useMediaPipe(videoElement);
 
-  // ✅ Milestone 2 Checkpoint – visible in browser DevTools console
-  useEffect(() => {
-    if (landmarks) {
-      console.log('Real-time Pose Landmarks:', landmarks);
-    }
-  }, [landmarks]);
-
-  // Keep a ref so the Three.js animate loop always reads the latest value
-  // without stale-closure issues (no re-render needed inside rAF).
   const landmarksRef = useRef(null);
+  useEffect(() => { landmarksRef.current = landmarks; }, [landmarks]);
+
+  // ── Initialize One-Euro Filters ───────────────────────────────────────────
   useEffect(() => {
-    landmarksRef.current = landmarks;
-  }, [landmarks]);
+    filtersRef.current = {
+      position: createPositionFilters(CONFIG.minCutoff, CONFIG.beta),
+      scale:    createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
+      angleZ:   createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
+    };
+  }, []);
 
   // ── Bootstrap Three.js ────────────────────────────────────────────────────
   useEffect(() => {
@@ -58,7 +64,6 @@ export default function ARTryOn() {
         video.srcObject = stream;
         video.playsInline = true;
         video.play().then(() => {
-          // Pass the live element to useMediaPipe
           setVideoElement(video);
           setStatus('');
         });
@@ -67,9 +72,9 @@ export default function ARTryOn() {
 
     // 2. Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 2 : 3));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !isMobile; // skip shadows on mobile for perf
     rendererRef.current = renderer;
 
     // 3. Scene
@@ -90,7 +95,7 @@ export default function ARTryOn() {
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dir = new THREE.DirectionalLight(0xffffff, 1.5);
     dir.position.set(2, 5, 2);
-    dir.castShadow = true;
+    dir.castShadow = !isMobile;
     scene.add(dir);
 
     // 6. Render loop
@@ -98,103 +103,108 @@ export default function ARTryOn() {
       animFrameRef.current = requestAnimationFrame(animate);
       
       const wrapper = modelRef.current;
-      const lms = landmarksRef.current;
+      const lms     = landmarksRef.current;
+      const filters = filtersRef.current;
+      const now     = performance.now() / 1000; // seconds
 
-      if (wrapper && lms && lms.poseLandmarks) {
-        const leftShoulder = lms.poseLandmarks[11];
+      if (wrapper && lms && lms.poseLandmarks && filters) {
+        const leftShoulder  = lms.poseLandmarks[11];
         const rightShoulder = lms.poseLandmarks[12];
-        const leftHip = lms.poseLandmarks[23];
-        const rightHip = lms.poseLandmarks[24];
+        const leftHip       = lms.poseLandmarks[23];
+        const rightHip      = lms.poseLandmarks[24];
 
         if (leftShoulder && rightShoulder && leftHip && rightHip) {
-          // --- 1. Calculate Torso Center in MediaPipe Normalized Space (0 to 1) ---
+          // ── Reset grace period counter (tracking is active) ──
+          lostFramesRef.current = 0;
+          wrapper.visible = true;
+
+          // --- 1. Torso Center (MediaPipe normalized 0–1) ---
           const torsoMidX = (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4;
           const torsoMidY = (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4;
           
-          // --- 2. Calculate Shoulder Width in Normalized Space ---
+          // --- 2. Shoulder Width (normalized) ---
           const shoulderWidthMP = Math.sqrt(
             Math.pow(rightShoulder.x - leftShoulder.x, 2) +
             Math.pow(rightShoulder.y - leftShoulder.y, 2)
           );
 
-          // --- 3. Auto-Depth: Focal Length Scaling (Inverse Square Law) ---
-          // CALIBRATION: Stand at a comfortable distance, console.log(shoulderWidthMP),
-          // and set that value as referenceShoulderWidthMP.
-          const referenceShoulderWidthMP = 0.2;    // Shoulder width at reference distance
-          const referenceDistanceWorldUnits = 2.0; // World units at that reference width
-          const minDistanceWorldUnits = 0.5;       // Closest allowed (prevents clipping)
-          const maxDistanceWorldUnits = 5.0;       // Farthest allowed (prevents disappearing)
+          // --- 3. Focal Length Depth (inverse square law) ---
+          const referenceShoulderWidthMP = 0.2;
+          const referenceDistanceWorldUnits = 2.0;
+          const minDist = 0.5;
+          const maxDist = 5.0;
 
-          let currentDistanceWorldUnits;
+          let currentDist;
           if (shoulderWidthMP > 0.01) {
-            // Inverse relationship: wider shoulders = closer distance
-            currentDistanceWorldUnits = referenceDistanceWorldUnits * (referenceShoulderWidthMP / shoulderWidthMP);
-            currentDistanceWorldUnits = Math.max(minDistanceWorldUnits, Math.min(maxDistanceWorldUnits, currentDistanceWorldUnits));
+            currentDist = referenceDistanceWorldUnits * (referenceShoulderWidthMP / shoulderWidthMP);
+            currentDist = Math.max(minDist, Math.min(maxDist, currentDist));
           } else {
-            currentDistanceWorldUnits = maxDistanceWorldUnits;
+            currentDist = maxDist;
           }
 
-          // Convert world distance to NDC Z parameter (0 to 1) for unproject
-          const near = camera.near;
-          const far = camera.far;
-          const depthZParam = (currentDistanceWorldUnits - near) / (far - near);
-          const clampedDepthZParam = Math.max(0, Math.min(1, depthZParam));
+          const depthZParam = Math.max(0, Math.min(1,
+            (currentDist - camera.near) / (camera.far - camera.near)
+          ));
 
-          // --- 4. Convert to Normalized Device Coordinates (NDC) (-1 to 1) ---
+          // --- 4. NDC + Unproject ---
           const ndcX = (torsoMidX * 2) - 1;
           const ndcY = -(torsoMidY * 2) + 1;
           
-          // --- 5. Unproject to 3D World Space ---
-          const targetVector = new THREE.Vector3(ndcX, ndcY, clampedDepthZParam);
+          const targetVector = new THREE.Vector3(ndcX, ndcY, depthZParam);
           targetVector.unproject(camera);
 
-          // --- 6. Apply Position with Smoothing and Model Offset ---
-          if (!wrapper.userData.targetPos) {
-            wrapper.userData.targetPos = new THREE.Vector3();
-          }
-          wrapper.userData.targetPos.copy(targetVector);
-          
-          // TWEAK THESE OFFSETS (in world units)
-          const offsetX = 0.0;  // Horizontal alignment
-          const offsetY = -0.3; // Vertical alignment (negative = down)
-          const offsetZ = 0.0;  // Depth alignment (negative = toward camera)
+          // --- 5. Offsets (tweak per model) ---
+          const offsetX = 0.0;
+          const offsetY = -0.3;
+          const offsetZ = 0.0;
+          targetVector.x += offsetX;
+          targetVector.y += offsetY;
+          targetVector.z += offsetZ;
 
-          wrapper.userData.targetPos.x += offsetX;
-          wrapper.userData.targetPos.y += offsetY;
-          wrapper.userData.targetPos.z += offsetZ;
+          // --- 6. One-Euro Filtered Position (replaces simple lerp) ---
+          const fx = filters.position.x.filter(targetVector.x, now);
+          const fy = filters.position.y.filter(targetVector.y, now);
+          const fz = filters.position.z.filter(targetVector.z, now);
+          wrapper.position.set(fx, fy, fz);
 
-          wrapper.position.lerp(wrapper.userData.targetPos, 0.15);
-
-          // --- 7. Calculate and Apply Rotation ---
+          // --- 7. One-Euro Filtered Rotation ---
           const dx = rightShoulder.x - leftShoulder.x;
           const dy = rightShoulder.y - leftShoulder.y;
-          const angleZ = Math.atan2(-dy, dx); 
-          
-          const initialXRotation = Math.PI; // 180° fix for Y-up GLTF convention
-          const targetQuaternion = new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(initialXRotation, 0, angleZ, 'XYZ') 
+          const rawAngleZ = Math.atan2(-dy, dx);
+          const filteredAngleZ = filters.angleZ.filter(rawAngleZ, now);
+
+          const initialXRotation = Math.PI;
+          const targetQ = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(initialXRotation, 0, filteredAngleZ, 'XYZ')
           );
-          wrapper.quaternion.slerp(targetQuaternion, 0.15);
-          
-          // --- 8. Scale proportional to estimated world distance ---
-          // At referenceDistance the model should look correct with baseScaleFactor.
-          // As distance increases, scale increases proportionally (perspective compensation).
-          const baseScaleFactor = 0.8; // Scale at 1 world unit distance
-          const targetScale = baseScaleFactor * currentDistanceWorldUnits;
-          
-          const currentScale = wrapper.scale.x;
-          wrapper.scale.setScalar(currentScale + (targetScale - currentScale) * 0.15);
+          wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
+
+          // --- 8. One-Euro Filtered Scale ---
+          const baseScaleFactor = 0.8;
+          const rawScale = baseScaleFactor * currentDist;
+          const filteredScale = filters.scale.filter(rawScale, now);
+          wrapper.scale.setScalar(filteredScale);
         }
-      } else if (wrapper && (!lms || !lms.poseLandmarks)) {
-        // Gentle auto-rotate when no body is detected
-        wrapper.rotation.y += 0.004;
+      } else if (wrapper) {
+        // ── Graceful Degradation ──────────────────────────────────────────
+        // Keep model visible for a grace period, then hide
+        lostFramesRef.current += 1;
+
+        if (lostFramesRef.current <= CONFIG.gracePeriodFrames) {
+          // Grace period: keep last known position, no spinning
+          wrapper.visible = true;
+        } else {
+          // Past grace period: gently fade model or auto-rotate
+          wrapper.visible = true;
+          wrapper.rotation.y += 0.004;
+        }
       }
 
       renderer.render(scene, camera);
     };
     animate();
 
-    // 7. Resize support
+    // 7. Resize
     const onResize = () => {
       camera.aspect = canvas.clientWidth / canvas.clientHeight;
       camera.updateProjectionMatrix();
@@ -223,31 +233,36 @@ export default function ARTryOn() {
     setLoaded(false);
     setStatus('Loading model…');
 
+    // Reset filters when switching models
+    if (filtersRef.current) {
+      filtersRef.current.position.x.reset();
+      filtersRef.current.position.y.reset();
+      filtersRef.current.position.z.reset();
+      filtersRef.current.scale.reset();
+      filtersRef.current.angleZ.reset();
+    }
+
     const loader = new GLTFLoader();
     loader.load(
       selectedModel.src,
       (gltf) => {
         const rawModel = gltf.scene;
 
-        // --- Initial rotation fix for upside-down models ---
-        // If your model is consistently upside down, uncomment and adjust:
-        // rawModel.rotation.x = Math.PI; // Rotate 180° around X-axis
-        // rawModel.rotation.y = Math.PI; // Rotate 180° around Y-axis if needed
+        // Initial rotation fix (uncomment if model is upside down at rest)
+        // rawModel.rotation.x = Math.PI;
 
-        // Auto-scale raw model
+        // Auto-scale
         const box    = new THREE.Box3().setFromObject(rawModel);
         const size   = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z);
-        const scale  = 1.6 / maxDim; // This initial scale might need adjustment
+        const scale  = 1.6 / maxDim;
         rawModel.scale.setScalar(scale);
 
-        // Centre the raw geometry at the origin (0,0,0)
+        // Centre at origin
         const center = box.getCenter(new THREE.Vector3());
         rawModel.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
 
-        // CREATE A WRAPPER GROUP
-        // All MediaPipe body tracking transforms are applied to the wrapper,
-        // preserving the model's internal centering.
+        // Wrapper group (tracking applies here, not to raw mesh)
         const wrapper = new THREE.Group();
         wrapper.add(rawModel);
 
@@ -273,7 +288,7 @@ export default function ARTryOn() {
         style={{ zIndex: 0 }}
       />
 
-      {/* Three.js canvas (transparent — model composites over camera) */}
+      {/* Three.js canvas */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
@@ -306,6 +321,17 @@ export default function ARTryOn() {
               style={{ background: !isLoaded ? '#fbbf24' : (landmarks?.poseLandmarks ? '#4ade80' : '#ff6b6b') }}
             />
             {!isLoaded ? 'Loading AI Model…' : (landmarks?.poseLandmarks ? 'Body Tracked' : 'Scanning…')}
+          </div>
+          {/* Device badge */}
+          <div
+            className="mt-1 px-3 py-0.5 text-[7px] tracking-widest uppercase"
+            style={{
+              background: 'rgba(20,20,20,0.45)',
+              color: 'rgba(255,255,255,0.3)',
+              borderRadius: '2px',
+            }}
+          >
+            {isMobile ? '📱 Mobile Mode' : '🖥️ Desktop Mode'}
           </div>
         </div>
       )}
