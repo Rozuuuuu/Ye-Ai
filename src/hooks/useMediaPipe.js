@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const useMediaPipe = (videoElement) => {
+export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirrored: false }) => {
   const [landmarks, setLandmarks] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const holisticRef = useRef(null);
@@ -40,7 +40,7 @@ export const useMediaPipe = (videoElement) => {
       });
 
       holistic.setOptions({
-        modelComplexity: 1, // 1 for better performance, 2 for better accuracy
+        modelComplexity: options.modelComplexity, 
         smoothLandmarks: true,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5,
@@ -48,7 +48,19 @@ export const useMediaPipe = (videoElement) => {
 
       holistic.onResults((results) => {
         setIsLoaded(true); // Model is running and returning results!
-        setLandmarks(results);
+        
+        // Handle Camera Mirroring (Crucial for selfie-mode AR Try-On)
+        if (options.mirrored && results.poseLandmarks) {
+          // Deep copy to avoid mutating mediapipe's internal references
+          const mirroredResults = { ...results };
+          mirroredResults.poseLandmarks = results.poseLandmarks.map(landmark => ({
+            ...landmark,
+            x: 1 - landmark.x // Flip X axis
+          }));
+          setLandmarks(mirroredResults);
+        } else {
+          setLandmarks(results);
+        }
       });
 
       holisticRef.current = holistic;

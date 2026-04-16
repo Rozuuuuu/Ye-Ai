@@ -13,9 +13,10 @@ const MODELS = [
 // ── Mobile / Desktop detection ──────────────────────────────────────────────
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+// Enable selfie mirroring (mirrored: true) to ensure left/right match the user's reflection
 const CONFIG = isMobile
-  ? { modelComplexity: 0, lerpFactor: 0.25, minCutoff: 0.8, beta: 0.01, gracePeriodFrames: 10 }
-  : { modelComplexity: 1, lerpFactor: 0.15, minCutoff: 1.0, beta: 0.007, gracePeriodFrames: 15 };
+  ? { modelComplexity: 0, lerpFactor: 0.25, minCutoff: 0.8, beta: 0.01, gracePeriodFrames: 10, mirrored: true }
+  : { modelComplexity: 1, lerpFactor: 0.15, minCutoff: 1.0, beta: 0.007, gracePeriodFrames: 15, mirrored: true };
 
 export default function ARTryOn() {
   const canvasRef     = useRef(null);
@@ -34,7 +35,7 @@ export default function ARTryOn() {
   const [loaded, setLoaded]               = useState(false);
 
   // ── Body tracking ─────────────────────────────────────────────────────────
-  const { landmarks, isLoaded } = useMediaPipe(videoElement);
+  const { landmarks, isLoaded } = useMediaPipe(videoElement, CONFIG);
 
   const landmarksRef = useRef(null);
   useEffect(() => { landmarksRef.current = landmarks; }, [landmarks]);
@@ -56,9 +57,9 @@ export default function ARTryOn() {
 
     let stream;
 
-    // 1. Camera stream
+    // 1. Camera stream - Use selfie camera for AR Try-On
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      .getUserMedia({ video: { facingMode: 'user' }, audio: false })
       .then((s) => {
         stream = s;
         video.srcObject = stream;
@@ -118,9 +119,9 @@ export default function ARTryOn() {
           lostFramesRef.current = 0;
           wrapper.visible = true;
 
-          // --- 1. Torso Center (MediaPipe normalized 0–1) ---
-          const torsoMidX = (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4;
-          const torsoMidY = (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4;
+          // --- 1. Anchor to Neck/Shoulders (instead of full torso) ---
+          const anchorX = (leftShoulder.x + rightShoulder.x) / 2;
+          const anchorY = (leftShoulder.y + rightShoulder.y) / 2;
           
           // --- 2. Shoulder Width (normalized) ---
           const shoulderWidthMP = Math.sqrt(
@@ -128,43 +129,41 @@ export default function ARTryOn() {
             Math.pow(rightShoulder.y - leftShoulder.y, 2)
           );
 
-          // --- 3. Focal Length Depth (inverse square law) ---
-          const referenceShoulderWidthMP = 0.2;
-          const referenceDistanceWorldUnits = 2.0;
-          const minDist = 0.5;
-          const maxDist = 5.0;
+          // --- 3. Distance Estimation ---
+          const referenceShoulderWidthMP = 0.25; 
+          const referenceDistanceWorldUnits = 3.5; 
+          const minDist = 1.5; // Prevent getting too close
+          const maxDist = 8.0;
 
-          let currentDist;
+          let currentDist = maxDist;
           if (shoulderWidthMP > 0.01) {
             currentDist = referenceDistanceWorldUnits * (referenceShoulderWidthMP / shoulderWidthMP);
             currentDist = Math.max(minDist, Math.min(maxDist, currentDist));
-          } else {
-            currentDist = maxDist;
           }
 
-          const depthZParam = Math.max(0, Math.min(1,
-            (currentDist - camera.near) / (camera.far - camera.near)
-          ));
-
-          // --- 4. NDC + Unproject ---
-          const ndcX = (torsoMidX * 2) - 1;
-          const ndcY = -(torsoMidY * 2) + 1;
+          // --- 4. Unproject using Ray-Casting ---
+          const ndcX = (anchorX * 2) - 1;
+          const ndcY = -(anchorY * 2) + 1;
           
-          const targetVector = new THREE.Vector3(ndcX, ndcY, depthZParam);
+          // Project to a plane at Z = 0.5 (mid-frustum)
+          const targetVector = new THREE.Vector3(ndcX, ndcY, 0.5);
           targetVector.unproject(camera);
 
-          // --- 5. Offsets (tweak per model) ---
-          const offsetX = 0.0;
-          const offsetY = -0.3;
-          const offsetZ = 0.0;
-          targetVector.x += offsetX;
-          targetVector.y += offsetY;
-          targetVector.z += offsetZ;
+          // Calculate direction from camera to unprojected point
+          const dirVec = targetVector.sub(camera.position).normalize();
+          
+          // Place model along that ray exactly at currentDist
+          const finalPos = camera.position.clone().add(dirVec.multiplyScalar(currentDist));
 
-          // --- 6. One-Euro Filtered Position (replaces simple lerp) ---
-          const fx = filters.position.x.filter(targetVector.x, now);
-          const fy = filters.position.y.filter(targetVector.y, now);
-          const fz = filters.position.z.filter(targetVector.z, now);
+          // --- 5. Offsets ---
+          // Offset Y slightly down from the shoulder line to the chest
+          const verticalOffset = 0.15 * (currentDist / referenceDistanceWorldUnits);
+          finalPos.y -= verticalOffset;
+
+          // --- 6. One-Euro Filtered Position ---
+          const fx = filters.position.x.filter(finalPos.x, now);
+          const fy = filters.position.y.filter(finalPos.y, now);
+          const fz = filters.position.z.filter(finalPos.z, now);
           wrapper.position.set(fx, fy, fz);
 
           // --- 7. One-Euro Filtered Rotation ---
@@ -180,8 +179,9 @@ export default function ARTryOn() {
           wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
 
           // --- 8. One-Euro Filtered Scale ---
-          const baseScaleFactor = 0.8;
-          const rawScale = baseScaleFactor * currentDist;
+          // Scale model relative to shoulder width in pixels/MP units
+          const baseScale = 2.2; // Adjust based on model's internal size
+          const rawScale = baseScale * shoulderWidthMP * currentDist;
           const filteredScale = filters.scale.filter(rawScale, now);
           wrapper.scale.setScalar(filteredScale);
         }
@@ -280,12 +280,12 @@ export default function ARTryOn() {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden" style={{ zIndex: 15 }}>
 
-      {/* Camera background */}
+      {/* Camera background (Mirror effect if facingMode is 'user') */}
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover"
         muted playsInline
-        style={{ zIndex: 0 }}
+        style={{ zIndex: 0, transform: 'scaleX(-1)' }}
       />
 
       {/* Three.js canvas */}
