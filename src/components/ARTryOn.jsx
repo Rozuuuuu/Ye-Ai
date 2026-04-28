@@ -1,14 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useMediaPipe } from '../hooks/useMediaPipe';
 import { createPositionFilters, createScalarFilter } from '../utils/OneEuroFilter';
+import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../utils/hybrid_integration';
 
+// ── Garment definitions ─────────────────────────────────────────────────────
 const MODELS = [
   { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb' },
   { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb' },
   { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb' },
 ];
+
+// Garment anchor map for TPS warp mode (loaded from JSON at runtime)
+const DEFAULT_ANCHORS = [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]];
 
 // ── Mobile / Desktop detection ──────────────────────────────────────────────
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -34,7 +39,16 @@ export default function ARTryOn() {
   const [status, setStatus]               = useState('Initializing…');
   const [loaded, setLoaded]               = useState(false);
 
-  // ── Body tracking ─────────────────────────────────────────────────────────
+  // ── Hybrid Warp State ───────────────────────────────────────────────────
+  const [viewMode, setViewMode]           = useState('3d'); // '3d' | 'warp'
+  const [warpedImageUrl, setWarpedImageUrl] = useState(null);
+  const [isWarping, setIsWarping]         = useState(false);
+  const [backendOnline, setBackendOnline] = useState(false);
+  const garmentBase64Ref = useRef(null);
+  const garmentAnchorsRef = useRef(null);
+  const warpIntervalRef = useRef(null);
+
+  // ── Body tracking (throttleMs: 0 for 3D, but we throttle warp sends separately) ──
   const { landmarks, isLoaded } = useMediaPipe(videoElement, CONFIG);
 
   const landmarksRef = useRef(null);
@@ -48,6 +62,84 @@ export default function ARTryOn() {
       angleZ:   createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
     };
   }, []);
+
+  // ── Check backend health on mount ─────────────────────────────────────────
+  useEffect(() => {
+    checkBackendHealth().then(({ ok }) => setBackendOnline(ok));
+  }, []);
+
+  // ── Load garment anchors JSON ─────────────────────────────────────────────
+  useEffect(() => {
+    fetch('/models/garment_anchors.json')
+      .then(r => r.json())
+      .then(data => { garmentAnchorsRef.current = data; })
+      .catch(() => { garmentAnchorsRef.current = null; });
+  }, []);
+
+  // ── Load 2D garment image when model or mode changes ──────────────────────
+  useEffect(() => {
+    if (viewMode !== 'warp') return;
+    
+    const anchors = garmentAnchorsRef.current;
+    const garmentConfig = anchors?.[selectedModel.id];
+    
+    if (!garmentConfig) {
+      console.warn(`No warp config for garment: ${selectedModel.id}`);
+      return;
+    }
+
+    loadGarmentAsBase64(garmentConfig.image)
+      .then(b64 => { garmentBase64Ref.current = b64; })
+      .catch(err => {
+        console.error('Failed to load garment image:', err);
+        garmentBase64Ref.current = null;
+      });
+  }, [viewMode, selectedModel]);
+
+  // ── Warp loop: send landmarks to backend every 200ms in warp mode ─────────
+  const sendWarpRequest = useCallback(async () => {
+    const lms = landmarksRef.current;
+    const garmentB64 = garmentBase64Ref.current;
+    const anchors = garmentAnchorsRef.current?.[selectedModel.id]?.anchors;
+    
+    if (!lms?.poseLandmarks || !garmentB64 || isWarping) return;
+
+    setIsWarping(true);
+    try {
+      const result = await getWarpedGarment(
+        garmentB64,
+        lms.poseLandmarks,
+        anchors || DEFAULT_ANCHORS
+      );
+      if (result) {
+        setWarpedImageUrl(result);
+      }
+    } catch (err) {
+      console.error('Warp request failed:', err);
+    } finally {
+      setIsWarping(false);
+    }
+  }, [selectedModel, isWarping]);
+
+  useEffect(() => {
+    if (viewMode === 'warp' && backendOnline) {
+      // Send warp requests every 200ms
+      warpIntervalRef.current = setInterval(sendWarpRequest, 200);
+    }
+    return () => {
+      if (warpIntervalRef.current) {
+        clearInterval(warpIntervalRef.current);
+        warpIntervalRef.current = null;
+      }
+    };
+  }, [viewMode, backendOnline, sendWarpRequest]);
+
+  // ── Clear warped image when switching to 3D mode ──────────────────────────
+  useEffect(() => {
+    if (viewMode === '3d') {
+      setWarpedImageUrl(null);
+    }
+  }, [viewMode]);
 
   // ── Bootstrap Three.js ────────────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +369,28 @@ export default function ARTryOn() {
     );
   }, [selectedModel]);
 
+  // ── Toggle handler ────────────────────────────────────────────────────────
+  const handleModeToggle = () => {
+    if (viewMode === '3d') {
+      if (!backendOnline) {
+        // Re-check backend before switching
+        checkBackendHealth().then(({ ok }) => {
+          setBackendOnline(ok);
+          if (ok) {
+            setViewMode('warp');
+          } else {
+            setStatus('Warp backend offline — start ml-backend server');
+            setTimeout(() => setStatus(''), 3000);
+          }
+        });
+        return;
+      }
+      setViewMode('warp');
+    } else {
+      setViewMode('3d');
+    }
+  };
+
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden" style={{ zIndex: 15 }}>
 
@@ -288,12 +402,49 @@ export default function ARTryOn() {
         style={{ zIndex: 0, transform: 'scaleX(-1)' }}
       />
 
-      {/* Three.js canvas */}
+      {/* Three.js canvas — hidden in warp mode */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
-        style={{ zIndex: 1 }}
+        style={{ 
+          zIndex: 1, 
+          opacity: viewMode === '3d' ? 1 : 0,
+          pointerEvents: viewMode === '3d' ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease',
+        }}
       />
+
+      {/* ── Warped Garment Overlay (Warp Mode) ─────────────────────────── */}
+      {viewMode === 'warp' && warpedImageUrl && (
+        <img
+          src={warpedImageUrl}
+          alt="Warped garment"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          style={{
+            zIndex: 2,
+            transform: 'scaleX(-1)', // Mirror to match video
+            mixBlendMode: 'normal',
+          }}
+        />
+      )}
+
+      {/* ── Warp Processing Indicator ──────────────────────────────────── */}
+      {viewMode === 'warp' && isWarping && !warpedImageUrl && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div
+            className="px-4 py-2 text-[9px] font-bold tracking-widest uppercase animate-pulse"
+            style={{
+              background: 'rgba(20,20,20,0.7)',
+              color: '#a78bfa',
+              border: '1px solid rgba(167,139,250,0.3)',
+              borderRadius: '4px',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            Warping…
+          </div>
+        </div>
+      )}
 
       {/* Loading / error status */}
       {status && (
@@ -336,6 +487,41 @@ export default function ARTryOn() {
         </div>
       )}
 
+      {/* ── Mode Toggle (3D ↔ Warp) ──────────────────────────────────── */}
+      {loaded && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+          <button
+            onClick={handleModeToggle}
+            className="flex items-center gap-2 px-4 py-1.5 text-[9px] font-bold tracking-widest uppercase rounded-full transition-all duration-300"
+            style={{
+              background: viewMode === 'warp'
+                ? 'linear-gradient(135deg, rgba(167,139,250,0.8), rgba(139,92,246,0.8))'
+                : 'rgba(20,20,20,0.75)',
+              color: viewMode === 'warp' ? '#fff' : 'rgba(255,255,255,0.6)',
+              backdropFilter: 'blur(10px)',
+              border: viewMode === 'warp'
+                ? '1px solid rgba(167,139,250,0.5)'
+                : '1px solid rgba(255,255,255,0.1)',
+              boxShadow: viewMode === 'warp'
+                ? '0 4px 15px rgba(139,92,246,0.3)'
+                : 'none',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+              {viewMode === '3d' ? 'view_in_ar' : 'auto_fix_high'}
+            </span>
+            {viewMode === '3d' ? '3D Mode' : 'Warp Mode'}
+            {!backendOnline && viewMode === '3d' && (
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: '#ff6b6b' }}
+                title="Warp backend offline"
+              />
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Model switcher */}
       <div className="absolute top-4 right-4 flex flex-col gap-2 z-30">
         {MODELS.map((m) => (
@@ -360,14 +546,20 @@ export default function ARTryOn() {
         <div
           className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 px-4 py-1 text-[9px] font-bold tracking-widest uppercase whitespace-nowrap"
           style={{
-            background: 'rgba(255,107,107,0.12)',
-            color: '#ffb3b0',
-            border: '1px solid rgba(255,107,107,0.25)',
+            background: viewMode === 'warp'
+              ? 'rgba(139,92,246,0.12)'
+              : 'rgba(255,107,107,0.12)',
+            color: viewMode === 'warp' ? '#c4b5fd' : '#ffb3b0',
+            border: viewMode === 'warp'
+              ? '1px solid rgba(139,92,246,0.25)'
+              : '1px solid rgba(255,107,107,0.25)',
             borderRadius: '2px',
             backdropFilter: 'blur(6px)',
           }}
         >
-          Stand back · Full torso visible
+          {viewMode === 'warp'
+            ? 'Hybrid Warp · Stand back · Full torso visible'
+            : 'Stand back · Full torso visible'}
         </div>
       )}
     </div>

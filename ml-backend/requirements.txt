@@ -1,0 +1,13 @@
+# Ye-Ai Kornia Warp Engine — Python Dependencies
+# Python >= 3.11 required (per Kornia's pyproject.toml)
+#
+# Install: pip install -r requirements.txt
+# For GPU: install PyTorch with CUDA first from https://pytorch.org/get-started/locally/
+
+torch>=2.0.0
+kornia>=0.7.0
+opencv-python>=4.8.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pillow>=10.0.0
+numpy>=1.24.0

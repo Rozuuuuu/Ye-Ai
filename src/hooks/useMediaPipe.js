@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirrored: false }) => {
+/**
+ * useMediaPipe — Hook for MediaPipe Holistic body tracking.
+ *
+ * @param {HTMLVideoElement} videoElement - The video element to track.
+ * @param {object} options
+ * @param {number} options.modelComplexity - 0 (lite) or 1 (full). Default: 1.
+ * @param {boolean} options.mirrored - Mirror landmarks for selfie camera. Default: false.
+ * @param {number} options.throttleMs - Minimum ms between sends. 0 = every frame (3D mode).
+ *   Set to 200 for warp mode to reduce backend load. Default: 0.
+ */
+export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirrored: false, throttleMs: 0 }) => {
   const [landmarks, setLandmarks] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const holisticRef = useRef(null);
   const rafIdRef = useRef(null);
+  const lastSendTimeRef = useRef(0); // Throttle timestamp
 
   useEffect(() => {
     if (!videoElement) return;
@@ -27,6 +38,7 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
     };
 
     let holistic = null;
+    const throttleMs = options.throttleMs || 0;
 
     loadMediaPipe().then((HolisticClass) => {
       if (!HolisticClass) {
@@ -70,6 +82,15 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
           rafIdRef.current = requestAnimationFrame(sendToMediaPipe);
           return;
         }
+
+        // Throttle: skip send if not enough time has passed
+        const now = performance.now();
+        if (throttleMs > 0 && (now - lastSendTimeRef.current) < throttleMs) {
+          rafIdRef.current = requestAnimationFrame(sendToMediaPipe);
+          return;
+        }
+        lastSendTimeRef.current = now;
+
         try {
           await holistic.send({ image: videoElement });
         } catch (e) {
