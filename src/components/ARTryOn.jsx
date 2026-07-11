@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useMediaPipe } from '../hooks/useMediaPipe';
 import { createPositionFilters, createScalarFilter } from '../utils/OneEuroFilter';
 import { videoToScreen, screenToWorld } from '../utils/screenSpacePlacement';
+import { kolorsTryOn } from '../utils/kolorsTryOn';
 import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../utils/hybrid_integration';
 
 // ── Garment definitions ─────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ export default function ARTryOn() {
   // ── AI Photo Try-On (Snap & Try) ────────────────────────────────────────
   const [aiImageUrl, setAiImageUrl] = useState(null);
   const [aiLoading, setAiLoading]   = useState(false);
+  const [aiStatus, setAiStatus]     = useState('');
   const [aiError, setAiError]       = useState(null);
 
   // ── Body tracking (throttleMs: 0 for 3D, but we throttle warp sends separately) ──
@@ -386,11 +388,14 @@ export default function ARTryOn() {
   }, [selectedModel]);
 
   // ── AI Photo Try-On: capture a frame, send with the garment image ────────
+  // Primary provider: Kolors on Hugging Face (free, browser-direct).
+  // Fallback: our /api/tryon Gemini endpoint (needs paid-tier key).
   const handleSnapAndTry = async () => {
     const video = videoRef.current;
     if (!video?.videoWidth || aiLoading) return;
     setAiError(null);
     setAiLoading(true);
+    setAiStatus('Capturing…');
     try {
       // Capture the current frame, mirrored to match the on-screen preview
       const cap = document.createElement('canvas');
@@ -400,22 +405,31 @@ export default function ARTryOn() {
       ctx.translate(cap.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0);
-      const personImageBase64 = cap.toDataURL('image/jpeg', 0.9);
+      const personBlob = await new Promise((resolve) => cap.toBlob(resolve, 'image/jpeg', 0.9));
+      const garmentBlob = await (await fetch(selectedModel.flatSrc)).blob();
 
-      const garmentImageBase64 = await loadGarmentAsBase64(selectedModel.flatSrc);
-
-      const resp = await fetch('/api/tryon', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personImageBase64, garmentImageBase64 }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || 'AI try-on failed');
-      setAiImageUrl(data.imageBase64);
+      try {
+        setAiStatus('Generating…');
+        setAiImageUrl(await kolorsTryOn(personBlob, garmentBlob, setAiStatus));
+      } catch (kolorsErr) {
+        console.warn('Kolors try-on failed, falling back to Gemini:', kolorsErr);
+        setAiStatus('Free GPU busy · trying backup…');
+        const personImageBase64 = cap.toDataURL('image/jpeg', 0.9);
+        const garmentImageBase64 = await loadGarmentAsBase64(selectedModel.flatSrc);
+        const resp = await fetch('/api/tryon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ personImageBase64, garmentImageBase64 }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || kolorsErr.message || 'AI try-on failed');
+        setAiImageUrl(data.imageBase64);
+      }
     } catch (err) {
       setAiError(err.message || 'AI try-on failed');
     } finally {
       setAiLoading(false);
+      setAiStatus('');
     }
   };
 
@@ -637,7 +651,7 @@ export default function ARTryOn() {
             >
               {aiLoading ? 'progress_activity' : 'auto_awesome'}
             </span>
-            {aiLoading ? 'Generating your fit…' : 'Snap & Try (AI)'}
+            {aiLoading ? (aiStatus || 'Generating your fit…') : 'Snap & Try (AI)'}
           </button>
           {aiError && (
             <button
