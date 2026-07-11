@@ -8,18 +8,16 @@ import ViewfinderOverlay from '../components/ViewfinderOverlay';
 import VerdictDrawer from '../components/VerdictDrawer';
 import LoadingHanger from '../components/LoadingHanger';
 import { getRandomVerdict } from '../data/verdicts';
-import { useColorExtractor } from '../hooks/useColorExtractor';
+import { extractPalette } from '../utils/extractPalette';
 import { useAnalyzeOutfit } from '../hooks/useAnalyzeOutfit';
 import { fetchCaptures, createCapture } from '../lib/api';
 
 const LS_IMAGE = 'afj-last-capture';
-const LS_COUNT = 'afj-capture-count';
 
 export default function Home() {
   const webcamRef = useRef(null);
 
   // ── Hooks ───────────────────────────────────────────────
-  const { extract } = useColorExtractor();
   const { analyze } = useAnalyzeOutfit();
 
   // ── State ───────────────────────────────────────────────
@@ -68,13 +66,8 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      // 1. Extract colors reliably using Image object
-      const colors = await new Promise((resolve) => {
-        const imageElement = new Image();
-        imageElement.src = img;
-        imageElement.onload = () => resolve(extract(imageElement));
-        imageElement.onerror = () => resolve([]);
-      });
+      // 1. Extract dominant colors
+      const colors = await extractPalette(img);
 
       // 2. Pass base64 + extracted colors directly to AI Edge Function
       let data = null;
@@ -162,16 +155,14 @@ export default function Home() {
   // ── Preview Handlers ────────────────────────────────────
   const handleConfirmPreview = async () => {
     setIsPreviewing(false);
-    
-    // Persist finalized image
+
+    // Persist finalized image thumbnail; the count only increments once the
+    // capture is actually saved (inside processImageAndAnalyze)
     if (capturedImg) {
       try {
         localStorage.setItem(LS_IMAGE, capturedImg);
-        const newCount = captureCount + 1;
-        localStorage.setItem(LS_COUNT, String(newCount));
-        setCaptureCount(newCount);
         setLastThumb(capturedImg);
-      } catch {}
+      } catch { /* localStorage full — thumbnail just won't persist */ }
       await processImageAndAnalyze(capturedImg);
     }
   };
@@ -186,12 +177,30 @@ export default function Home() {
     setCapturedImg(null);
   };
 
-  // Reopen last capture result
-  const handleThumbnailClick = () => {
+  // Reopen last capture result — session verdict if we have one, otherwise
+  // the most recent saved record (never a fabricated one)
+  const handleThumbnailClick = async () => {
     if (!lastThumb || isLoading || showDrawer) return;
     setCapturedImg(lastThumb);
-    setVerdict(getRandomVerdict());
-    setShowDrawer(true);
+
+    if (verdict) {
+      setShowDrawer(true);
+      return;
+    }
+    try {
+      const { captures } = await fetchCaptures(1);
+      const last = captures?.[0];
+      if (last) {
+        setVerdict({
+          score: last.vibe_score,
+          quote: last.verdict_quote,
+          vibe: last.vibe_label,
+          vibeColor: last.vibe_color,
+          suggestions: last.suggestions || [],
+        });
+        setShowDrawer(true);
+      }
+    } catch { /* API unavailable — nothing real to show */ }
   };
 
   // ── Render ──────────────────────────────────────────────

@@ -93,7 +93,7 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
 
         try {
           await holistic.send({ image: videoElement });
-        } catch (e) {
+        } catch {
           // ignore dropped frames
         }
         rafIdRef.current = requestAnimationFrame(sendToMediaPipe);
@@ -106,7 +106,7 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       if (holistic) holistic.close();
     };
-  }, [videoElement]);
+  }, [videoElement, options.modelComplexity, options.mirrored, options.throttleMs]);
 
   return { landmarks, isLoaded };
 };

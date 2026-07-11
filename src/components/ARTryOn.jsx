@@ -310,7 +310,6 @@ export default function ARTryOn() {
       window.removeEventListener('resize', onResize);
       stream?.getTracks().forEach((t) => t.stop());
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Load / switch GLB model ───────────────────────────────────────────────

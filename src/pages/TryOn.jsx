@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 
 import TopAppBar from '../components/TopAppBar';
@@ -33,12 +32,11 @@ const FEATURES = [
 ];
 
 export default function TryOn() {
-  const navigate = useNavigate();
   const webcamRef = useRef(null);
 
   const [facingMode, setFacingMode] = useState('environment');
   const [flashOn,    setFlashOn]    = useState(false);
-  const [webcamReady, setWebcamReady] = useState(true);
+  const [webcamReady] = useState(true);
   const [flashScreen, setFlashScreen] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
 
@@ -91,6 +89,19 @@ export default function TryOn() {
       {flashOn && facingMode === 'user' && (
         <div className="fixed inset-0 bg-[#ffd4a3]/15 mix-blend-screen pointer-events-none z-10" />
       )}
+
+      {/* Capture flash */}
+      <AnimatePresence>
+        {flashScreen && (
+          <motion.div
+            className="fixed inset-0 bg-white pointer-events-none z-[70]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.85 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1 }}
+          />
+        )}
+      </AnimatePresence>
 
       <TopAppBar flashOn={flashOn} onToggleFlash={() => setFlashOn(!flashOn)} />
 

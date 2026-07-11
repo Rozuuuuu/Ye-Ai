@@ -2,53 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaQuery } from 'react-responsive';
 import { useSpeech } from '../hooks/useSpeech';
-
-/* ─────────────────────────────────────────────────── */
-/*  Canvas-based palette extractor (no external dep)  */
-/* ─────────────────────────────────────────────────── */
-const extractPalette = (src, count = 5) =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const SIZE = 120;
-        const canvas = document.createElement('canvas');
-        canvas.width = SIZE;
-        canvas.height = SIZE;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, SIZE, SIZE);
-        const { data } = ctx.getImageData(0, 0, SIZE, SIZE);
-
-        // Collect opaque pixels
-        const pixels = [];
-        for (let i = 0; i < data.length; i += 16) {
-          if (data[i + 3] > 128) pixels.push([data[i], data[i + 1], data[i + 2]]);
-        }
-        if (!pixels.length) return resolve([]);
-
-        // Sort by perceived luminance
-        pixels.sort(
-          ([r1, g1, b1], [r2, g2, b2]) =>
-            0.299 * r1 + 0.587 * g1 + 0.114 * b1 -
-            (0.299 * r2 + 0.587 * g2 + 0.114 * b2)
-        );
-
-        // Divide into `count` buckets and average each
-        const bucket = Math.max(1, Math.floor(pixels.length / count));
-        const hex = pixels
-          .filter((_, i) => i % bucket === Math.floor(bucket / 2))
-          .slice(0, count)
-          .map(([r, g, b]) =>
-            '#' + [r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')
-          );
-        resolve(hex);
-      } catch {
-        resolve([]);
-      }
-    };
-    img.onerror = () => resolve([]);
-    img.src = src;
-  });
+import { extractPalette } from '../utils/extractPalette';
 
 /* ─────────────────────────────────────────────────── */
 /*  SuggestionCard                                     */
@@ -115,7 +69,10 @@ function SuggestionCard({ suggestion }) {
 /* ─────────────────────────────────────────────────── */
 export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict }) {
   const isDesktop = useMediaQuery({ minWidth: 1024 });
-  const [palette, setPalette] = useState([]);
+  // Palette is tagged with the image it was extracted from, so stale colors
+  // are never shown for a new capture (avoids sync setState-in-effect resets)
+  const [paletteResult, setPaletteResult] = useState({ img: null, colors: [] });
+  const palette = paletteResult.img === capturedImage ? paletteResult.colors : [];
   
   /* TTS Hook */
   const { speak, stop, isSpeaking } = useSpeech();
@@ -154,8 +111,11 @@ export default function VerdictDrawer({ isOpen, onClose, capturedImage, verdict 
   /* Extract palette whenever a new image arrives */
   useEffect(() => {
     if (!capturedImage || !isOpen) return;
-    setPalette([]);
-    extractPalette(capturedImage, 5).then(setPalette);
+    let stale = false;
+    extractPalette(capturedImage, 5).then((colors) => {
+      if (!stale) setPaletteResult({ img: capturedImage, colors });
+    });
+    return () => { stale = true; };
   }, [capturedImage, isOpen]);
 
   if (!verdict) return null;
