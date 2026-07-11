@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { useMediaPipe } from '../hooks/useMediaPipe';
 import { createPositionFilters, createScalarFilter } from '../utils/OneEuroFilter';
+import { videoToScreen, screenToWorld } from '../utils/screenSpacePlacement';
 import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../utils/hybrid_integration';
 
 // ── Garment definitions ─────────────────────────────────────────────────────
@@ -14,6 +15,13 @@ const MODELS = [
 
 // Garment anchor map for TPS warp mode (loaded from JSON at runtime)
 const DEFAULT_ANCHORS = [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]];
+
+// ── Screen-space placement (3D mode) ────────────────────────────────────────
+// The garment lives on a fixed plane in front of the camera; position comes
+// straight from crop-corrected landmark screen coords, and scale from shoulder
+// width. No world-distance estimation — that approach drifted (see git log).
+const GARMENT_DEPTH = 3.0;         // camera is at z=3, so the garment plane is z=0
+const GARMENT_WIDTH_FACTOR = 1.25; // garment width ÷ shoulder-joint width — the one tuning knob
 
 // ── Mobile / Desktop detection ──────────────────────────────────────────────
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -203,96 +211,66 @@ export default function ARTryOn() {
       const filters = filtersRef.current;
       const now     = performance.now() / 1000; // seconds
 
-      if (wrapper && lms && lms.poseLandmarks && filters) {
-        const leftShoulder  = lms.poseLandmarks[11];
-        const rightShoulder = lms.poseLandmarks[12];
-        const leftHip       = lms.poseLandmarks[23];
-        const rightHip      = lms.poseLandmarks[24];
+      const lm = lms?.poseLandmarks;
+      const tracked =
+        wrapper && filters &&
+        lm && lm[11] && lm[12] && lm[23] && lm[24] &&
+        video.videoWidth > 0;
 
-        if (leftShoulder && rightShoulder && leftHip && rightHip) {
-          // ── Reset grace period counter (tracking is active) ──
-          lostFramesRef.current = 0;
-          wrapper.visible = true;
+      if (tracked) {
+        // ── Reset grace period counter (tracking is active) ──
+        lostFramesRef.current = 0;
+        wrapper.visible = true;
 
-          // --- 1. Anchor to Neck/Shoulders (instead of full torso) ---
-          const anchorX = (leftShoulder.x + rightShoulder.x) / 2;
-          const anchorY = (leftShoulder.y + rightShoulder.y) / 2;
-          
-          // --- 2. Shoulder Width (normalized) ---
-          const shoulderWidthMP = Math.sqrt(
-            Math.pow(rightShoulder.x - leftShoulder.x, 2) +
-            Math.pow(rightShoulder.y - leftShoulder.y, 2)
-          );
+        // --- 1. Landmarks → world coords on the garment plane ---
+        // videoToScreen corrects for the object-cover crop of the <video>;
+        // screenToWorld maps screen fractions onto the fixed plane at z=0.
+        const cw = canvas.clientWidth,  ch = canvas.clientHeight;
+        const vw = video.videoWidth,    vh = video.videoHeight;
+        const project = (point) => screenToWorld(
+          videoToScreen(point, vw, vh, cw, ch),
+          camera.fov, camera.aspect, GARMENT_DEPTH, camera.position.z
+        );
 
-          // --- 3. Distance Estimation ---
-          const referenceShoulderWidthMP = 0.25; 
-          const referenceDistanceWorldUnits = 3.5; 
-          const minDist = 1.5; // Prevent getting too close
-          const maxDist = 8.0;
+        const sL = project(lm[11]); // left shoulder
+        const sR = project(lm[12]); // right shoulder
+        const hL = project(lm[23]); // left hip
+        const hR = project(lm[24]); // right hip
 
-          let currentDist = maxDist;
-          if (shoulderWidthMP > 0.01) {
-            currentDist = referenceDistanceWorldUnits * (referenceShoulderWidthMP / shoulderWidthMP);
-            currentDist = Math.max(minDist, Math.min(maxDist, currentDist));
-          }
+        // --- 2. Anchor at the torso centre (shoulder line ↔ hip line) ---
+        const finalPos = new THREE.Vector3(
+          (sL.x + sR.x + hL.x + hR.x) / 4,
+          (sL.y + sR.y + hL.y + hR.y) / 4,
+          (sL.z + sR.z + hL.z + hR.z) / 4
+        );
 
-          // --- 4. Unproject using Ray-Casting ---
-          const ndcX = (anchorX * 2) - 1;
-          const ndcY = -(anchorY * 2) + 1;
-          
-          // Project to a plane at Z = 0.5 (mid-frustum)
-          const targetVector = new THREE.Vector3(ndcX, ndcY, 0.5);
-          targetVector.unproject(camera);
+        // --- 3. One-Euro Filtered Position ---
+        const fx = filters.position.x.filter(finalPos.x, now);
+        const fy = filters.position.y.filter(finalPos.y, now);
+        const fz = filters.position.z.filter(finalPos.z, now);
+        wrapper.position.set(fx, fy, fz);
 
-          // Calculate direction from camera to unprojected point
-          const dirVec = targetVector.sub(camera.position).normalize();
-          
-          // Place model along that ray exactly at currentDist
-          const finalPos = camera.position.clone().add(dirVec.multiplyScalar(currentDist));
+        // --- 4. One-Euro Filtered Z tilt from the shoulder line ---
+        const rawAngleZ = Math.atan2(sR.y - sL.y, sR.x - sL.x);
+        const filteredAngleZ = filters.angleZ.filter(rawAngleZ, now);
 
-          // --- 5. Offsets ---
-          // Offset Y slightly down from the shoulder line to the chest
-          const verticalOffset = 0.15 * (currentDist / referenceDistanceWorldUnits);
-          finalPos.y -= verticalOffset;
+        const initialXRotation = Math.PI;
+        const targetQ = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(initialXRotation, 0, filteredAngleZ, 'XYZ')
+        );
+        wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
 
-          // --- 6. One-Euro Filtered Position ---
-          const fx = filters.position.x.filter(finalPos.x, now);
-          const fy = filters.position.y.filter(finalPos.y, now);
-          const fz = filters.position.z.filter(finalPos.z, now);
-          wrapper.position.set(fx, fy, fz);
-
-          // --- 7. One-Euro Filtered Rotation ---
-          const dx = rightShoulder.x - leftShoulder.x;
-          const dy = rightShoulder.y - leftShoulder.y;
-          const rawAngleZ = Math.atan2(-dy, dx);
-          const filteredAngleZ = filters.angleZ.filter(rawAngleZ, now);
-
-          const initialXRotation = Math.PI;
-          const targetQ = new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(initialXRotation, 0, filteredAngleZ, 'XYZ')
-          );
-          wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
-
-          // --- 8. One-Euro Filtered Scale ---
-          // Scale model relative to shoulder width in pixels/MP units
-          const baseScale = 2.2; // Adjust based on model's internal size
-          const rawScale = baseScale * shoulderWidthMP * currentDist;
-          const filteredScale = filters.scale.filter(rawScale, now);
-          wrapper.scale.setScalar(filteredScale);
-        }
+        // --- 5. Scale: garment width tracks shoulder width ---
+        const shoulderWorldWidth = Math.hypot(sR.x - sL.x, sR.y - sL.y);
+        const garmentWidth = shoulderWorldWidth * GARMENT_WIDTH_FACTOR;
+        const normWidth = wrapper.userData.normWidth || 1.6;
+        const filteredScale = filters.scale.filter(garmentWidth / normWidth, now);
+        wrapper.scale.setScalar(filteredScale);
       } else if (wrapper) {
-        // ── Graceful Degradation ──────────────────────────────────────────
-        // Keep model visible for a grace period, then hide
+        // ── Graceful degradation: hold the last pose briefly, then hide.
+        // Never idle-spin — a visible spinning garment reads as "floating".
         lostFramesRef.current += 1;
-
-        if (lostFramesRef.current <= CONFIG.gracePeriodFrames) {
-          // Grace period: keep last known position, no spinning
-          wrapper.visible = true;
-        } else {
-          // Past grace period: gently fade model or auto-rotate
-          wrapper.visible = true;
-          wrapper.rotation.y += 0.004;
-        }
+        wrapper.visible = lostFramesRef.current <= CONFIG.gracePeriodFrames;
       }
 
       renderer.render(scene, camera);
@@ -359,6 +337,10 @@ export default function ARTryOn() {
         // Wrapper group (tracking applies here, not to raw mesh)
         const wrapper = new THREE.Group();
         wrapper.add(rawModel);
+
+        // Record the model's normalized width so the render loop can match
+        // garment width to shoulder width regardless of each GLB's proportions
+        wrapper.userData.normWidth = size.x * scale;
 
         scene.add(wrapper);
         modelRef.current = wrapper;
