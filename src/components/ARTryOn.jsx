@@ -24,8 +24,9 @@ const DEFAULT_ANCHORS = [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]];
 // The garment lives on a fixed plane in front of the camera; position comes
 // straight from crop-corrected landmark screen coords, and scale from shoulder
 // width. No world-distance estimation — that approach drifted (see git log).
-const GARMENT_DEPTH = 3.0;         // camera is at z=3, so the garment plane is z=0
-const GARMENT_WIDTH_FACTOR = 1.35; // garment chest width ÷ shoulder-joint width — the one tuning knob
+const GARMENT_DEPTH = 3.0;          // camera is at z=3, so the garment plane is z=0
+const GARMENT_WIDTH_FACTOR = 1.35;  // garment chest width ÷ shoulder-joint width
+const GARMENT_LENGTH_FACTOR = 1.25; // garment length (collar→hem) ÷ shoulder-to-hip distance
 
 // ── Mobile / Desktop detection ──────────────────────────────────────────────
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -72,6 +73,7 @@ export default function ARTryOn() {
     filtersRef.current = {
       position: createPositionFilters(CONFIG.minCutoff, CONFIG.beta),
       scale:    createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
+      scaleY:   createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
       angleZ:   createScalarFilter(CONFIG.minCutoff, CONFIG.beta),
     };
   }, []);
@@ -179,7 +181,7 @@ export default function ARTryOn() {
       .catch(() => setStatus('Camera access denied'));
 
     // Version marker so we can tell which placement code a device is running
-    console.info('[tryon] screen-space placement v2 (3fcc787)');
+    console.info('[tryon] screen-space placement v3 (two-axis fit)');
 
     // 2. Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -269,12 +271,21 @@ export default function ARTryOn() {
         );
         wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
 
-        // --- 5. Scale: garment CHEST width tracks shoulder width ---
+        // --- 5. Two-axis fit: width from shoulders, length from torso ---
+        // Independent axes so the garment matches both the wearer's frame
+        // width and torso length instead of being right in only one of them.
         const shoulderWorldWidth = Math.hypot(sR.x - sL.x, sR.y - sL.y);
-        const targetChestWidth = shoulderWorldWidth * GARMENT_WIDTH_FACTOR;
-        const chestWidth = wrapper.userData.chestWidth || 1.6;
-        const filteredScale = filters.scale.filter(targetChestWidth / chestWidth, now);
-        wrapper.scale.setScalar(filteredScale);
+        const torsoWorldLength = Math.hypot(
+          (sL.x + sR.x) / 2 - (hL.x + hR.x) / 2,
+          (sL.y + sR.y) / 2 - (hL.y + hR.y) / 2
+        );
+        const { chestWidth = 1.6, bodyHeight = 1.6 } = wrapper.userData;
+        const scaleX = filters.scale.filter(
+          (shoulderWorldWidth * GARMENT_WIDTH_FACTOR) / chestWidth, now);
+        const scaleY = filters.scaleY.filter(
+          (torsoWorldLength * GARMENT_LENGTH_FACTOR) / bodyHeight, now);
+        // Depth follows the average so the garment doesn't go paper-thin
+        wrapper.scale.set(scaleX, scaleY, (scaleX + scaleY) / 2);
       } else if (wrapper) {
         // ── Graceful degradation: hold the last pose briefly, then hide.
         // Never idle-spin — a visible spinning garment reads as "floating".
@@ -320,6 +331,7 @@ export default function ARTryOn() {
       filtersRef.current.position.y.reset();
       filtersRef.current.position.z.reset();
       filtersRef.current.scale.reset();
+      filtersRef.current.scaleY.reset();
       filtersRef.current.angleZ.reset();
     }
 
@@ -348,6 +360,8 @@ export default function ARTryOn() {
         // spread) so the render loop can match it to shoulder width — bbox
         // width alone shrinks wide-sleeved models (jacket) to a tiny torso
         wrapper.userData.chestWidth = size.x * scale * (selectedModel.torsoFrac ?? 1);
+        // Normalized garment height, for fitting length to the wearer's torso
+        wrapper.userData.bodyHeight = size.y * scale;
 
         scene.add(wrapper);
         modelRef.current = wrapper;
