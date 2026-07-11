@@ -29,3 +29,11 @@ ml-backend/__pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+
+# Environment files (never commit keys)
+.env
+.env.*
+!.env.example
+
+# Private database scripts (Neon migration etc. — keep off GitHub)
+db/

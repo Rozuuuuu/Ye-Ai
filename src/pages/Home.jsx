@@ -10,7 +10,7 @@ import LoadingHanger from '../components/LoadingHanger';
 import { getRandomVerdict } from '../data/verdicts';
 import { useColorExtractor } from '../hooks/useColorExtractor';
 import { useAnalyzeOutfit } from '../hooks/useAnalyzeOutfit';
-import { supabase } from '../lib/supabase';
+import { fetchCaptures, createCapture } from '../lib/api';
 
 const LS_IMAGE = 'afj-last-capture';
 const LS_COUNT = 'afj-capture-count';
@@ -42,10 +42,10 @@ export default function Home() {
       if (saved) setLastThumb(saved);
       
       const fetchStats = async () => {
-        const { count, error } = await supabase
-          .from('captures')
-          .select('*', { count: 'exact', head: true });
-        if (!error) setCaptureCount(count || 0);
+        try {
+          const { total } = await fetchCaptures(1);
+          setCaptureCount(total || 0);
+        } catch { /* API layer not deployed yet */ }
       };
       fetchStats();
     } catch { /* Suppress */ }
@@ -100,43 +100,18 @@ export default function Home() {
         }))
       };
 
-      // 4. PERSIST TO CLOUD: Upload Image + Save Record (Always runs if confirmed)
+      // 4. PERSIST TO CLOUD: /api/captures stores the image + record server-side
       try {
-        const fileName = `outfit_${Date.now()}.jpg`;
-        const base64Str = img.replace(/^data:image\/\w+;base64,/, "");
-        const byteCharacters = atob(base64Str);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'image/jpeg' });
-
-        const { error: uploadError } = await supabase.storage
-          .from('outfits')
-          .upload(fileName, blob);
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('outfits')
-          .getPublicUrl(fileName);
-
-        const { error: dbError } = await supabase
-          .from('captures')
-          .insert([{
-            image_url: publicUrl,
-            vibe_score: normalizedVerdict.score,
-            verdict_quote: normalizedVerdict.quote,
-            vibe_label: normalizedVerdict.vibe,
-            vibe_color: normalizedVerdict.vibeColor,
-            suggestions: normalizedVerdict.suggestions,
-            palette: colors
-          }]);
-
-        if (!dbError) {
-          setCaptureCount(prev => prev + 1);
-        }
+        await createCapture({
+          imageBase64: img,
+          vibe_score: normalizedVerdict.score,
+          verdict_quote: normalizedVerdict.quote,
+          vibe_label: normalizedVerdict.vibe,
+          vibe_color: normalizedVerdict.vibeColor,
+          suggestions: normalizedVerdict.suggestions,
+          palette: colors
+        });
+        setCaptureCount(prev => prev + 1);
       } catch (persistenceErr) {
         console.warn("Cloud persistence failed:", persistenceErr);
       }

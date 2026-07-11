@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { SpeedInsights } from "@vercel/speed-insights/react"
 import './index.css'
 import App from './App.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 
 /* ── PWA Service Worker Registration ── */
 if ('serviceWorker' in navigator) {
@@ -22,7 +23,9 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
     <SpeedInsights />
   </StrictMode>,
 )

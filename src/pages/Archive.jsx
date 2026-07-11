@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import TopAppBar from '../components/TopAppBar';
 import BottomNavBar from '../components/BottomNavBar';
-import { supabase } from '../lib/supabase';
+import { fetchCaptures } from '../lib/api';
 
 export default function Archive() {
   const navigate = useNavigate();
@@ -15,27 +15,16 @@ export default function Archive() {
     const fetchArchive = async () => {
       setLoading(true);
       try {
-        // Fetch latest 50 captures
-        const { data, error } = await supabase
-          .from('captures')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(50);
+        // Fetch latest 50 captures + overall count from the API layer
+        const { captures: data = [], total = 0 } = await fetchCaptures(50);
+        setCaptures(data);
 
-        if (error) throw error;
-        setCaptures(data || []);
-
-        // Fetch overall stats
-        const { count } = await supabase
-          .from('captures')
-          .select('*', { count: 'exact', head: true });
-        
         // Final avg calculation in JS
-        const avg = data.length > 0 
+        const avg = data.length > 0
           ? (data.reduce((acc, curr) => acc + curr.vibe_score, 0) / data.length).toFixed(1)
           : 0;
 
-        setStats({ total: count || data.length, average: avg });
+        setStats({ total: total || data.length, average: avg });
       } catch (err) {
         console.error('Error fetching archive:', err);
       } finally {

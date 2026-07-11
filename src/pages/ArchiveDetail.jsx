@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { fetchCapture, deleteCapture } from '../lib/api';
 import TopAppBar from '../components/TopAppBar';
 import BottomNavBar from '../components/BottomNavBar';
 
@@ -15,15 +15,10 @@ export default function ArchiveDetail() {
   useEffect(() => {
     const fetchDetail = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('captures')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (!error && data) {
+      try {
+        const data = await fetchCapture(id);
         setCapture(data);
-      } else {
+      } catch (error) {
         console.error('Capture not found:', error);
       }
       setLoading(false);
@@ -36,18 +31,8 @@ export default function ArchiveDetail() {
     
     setDeleting(true);
     try {
-      // 1. Delete from Storage (extract fileName from URL)
-      // URL format: .../outfits/outfit_123.jpg
-      const fileName = capture.image_url.split('/').pop();
-      await supabase.storage.from('outfits').remove([fileName]);
-
-      // 2. Delete from Database
-      const { error } = await supabase
-        .from('captures')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      // API layer removes the DB row and the stored image together
+      await deleteCapture(id);
       navigate('/archive');
     } catch (err) {
       alert('Failed to delete: ' + err.message);
