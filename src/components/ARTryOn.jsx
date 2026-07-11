@@ -14,9 +14,9 @@ import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../ut
 // yawFix: the t-shirt is authored turned 29.4° on its vertical axis (measured
 // with db/measure-glb-rotation.mjs); this bakes it back to camera-facing.
 const MODELS = [
-  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb',         torsoFrac: 0.86, yawFix: 29.4 * Math.PI / 180 },
-  { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb', torsoFrac: 0.36 },
-  { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb',    torsoFrac: 0.70 },
+  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb',         flatSrc: '/models/t_shirt_flat.png', torsoFrac: 0.86, yawFix: 29.4 * Math.PI / 180 },
+  { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb', flatSrc: '/models/jacket_flat.png',  torsoFrac: 0.36 },
+  { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb',    flatSrc: '/models/hoodie_flat.png',  torsoFrac: 0.70 },
 ];
 
 // Garment anchor map for TPS warp mode (loaded from JSON at runtime)
@@ -63,6 +63,11 @@ export default function ARTryOn() {
   const garmentAnchorsRef = useRef(null);
   const warpIntervalRef = useRef(null);
   const isWarpingRef = useRef(false); // in-flight guard (ref, so the poll interval isn't rebuilt per request)
+
+  // ── AI Photo Try-On (Snap & Try) ────────────────────────────────────────
+  const [aiImageUrl, setAiImageUrl] = useState(null);
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [aiError, setAiError]       = useState(null);
 
   // ── Body tracking (throttleMs: 0 for 3D, but we throttle warp sends separately) ──
   const { landmarks, isLoaded } = useMediaPipe(videoElement, CONFIG);
@@ -380,6 +385,40 @@ export default function ARTryOn() {
     );
   }, [selectedModel]);
 
+  // ── AI Photo Try-On: capture a frame, send with the garment image ────────
+  const handleSnapAndTry = async () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth || aiLoading) return;
+    setAiError(null);
+    setAiLoading(true);
+    try {
+      // Capture the current frame, mirrored to match the on-screen preview
+      const cap = document.createElement('canvas');
+      cap.width = video.videoWidth;
+      cap.height = video.videoHeight;
+      const ctx = cap.getContext('2d');
+      ctx.translate(cap.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0);
+      const personImageBase64 = cap.toDataURL('image/jpeg', 0.9);
+
+      const garmentImageBase64 = await loadGarmentAsBase64(selectedModel.flatSrc);
+
+      const resp = await fetch('/api/tryon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ personImageBase64, garmentImageBase64 }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'AI try-on failed');
+      setAiImageUrl(data.imageBase64);
+    } catch (err) {
+      setAiError(err.message || 'AI try-on failed');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // ── Toggle handler ────────────────────────────────────────────────────────
   const handleModeToggle = () => {
     if (viewMode === '3d') {
@@ -571,6 +610,102 @@ export default function ARTryOn() {
           {viewMode === 'warp'
             ? 'Hybrid Warp · Stand back · Full torso visible'
             : 'Stand back · Full torso visible'}
+        </div>
+      )}
+
+      {/* ── AI Snap & Try button ─────────────────────────────────────────── */}
+      {loaded && viewMode === '3d' && !aiImageUrl && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2">
+          <button
+            onClick={handleSnapAndTry}
+            disabled={aiLoading}
+            className="flex items-center gap-2 px-5 py-2 text-[10px] font-bold tracking-widest uppercase rounded-full transition-all duration-300"
+            style={{
+              background: aiLoading
+                ? 'rgba(20,20,20,0.75)'
+                : 'linear-gradient(135deg, rgba(255,107,107,0.9), rgba(255,143,120,0.9))',
+              color: aiLoading ? '#ffb3b0' : '#131313',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,107,107,0.5)',
+              boxShadow: aiLoading ? 'none' : '0 4px 18px rgba(255,107,107,0.35)',
+              cursor: aiLoading ? 'wait' : 'pointer',
+            }}
+          >
+            <span
+              className={`material-symbols-outlined ${aiLoading ? 'animate-spin' : ''}`}
+              style={{ fontSize: '15px' }}
+            >
+              {aiLoading ? 'progress_activity' : 'auto_awesome'}
+            </span>
+            {aiLoading ? 'Generating your fit…' : 'Snap & Try (AI)'}
+          </button>
+          {aiError && (
+            <button
+              onClick={() => setAiError(null)}
+              className="px-3 py-1 text-[9px] font-bold tracking-widest uppercase"
+              style={{
+                background: 'rgba(255,80,80,0.15)',
+                color: '#ff9d9a',
+                border: '1px solid rgba(255,80,80,0.35)',
+                borderRadius: '2px',
+                backdropFilter: 'blur(6px)',
+              }}
+            >
+              {aiError} · tap to dismiss
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── AI result overlay ───────────────────────────────────────────── */}
+      {aiImageUrl && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center" style={{ background: 'rgba(10,10,10,0.92)' }}>
+          <img
+            src={aiImageUrl}
+            alt="AI try-on result"
+            className="max-w-full max-h-full object-contain"
+          />
+          <div className="absolute top-4 right-4 flex gap-2">
+            <a
+              href={aiImageUrl}
+              download="yeai-tryon.png"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-[9px] font-bold tracking-widest uppercase rounded-full"
+              style={{
+                background: 'rgba(255,107,107,0.9)',
+                color: '#131313',
+                border: '1px solid rgba(255,107,107,0.5)',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>download</span>
+              Save
+            </a>
+            <button
+              onClick={() => { setAiImageUrl(null); handleSnapAndTry(); }}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-[9px] font-bold tracking-widest uppercase rounded-full"
+              style={{
+                background: 'rgba(20,20,20,0.75)',
+                color: 'rgba(255,255,255,0.8)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                backdropFilter: 'blur(10px)',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>replay</span>
+              Retake
+            </button>
+            <button
+              onClick={() => setAiImageUrl(null)}
+              className="flex items-center px-3 py-1.5 rounded-full"
+              style={{
+                background: 'rgba(20,20,20,0.75)',
+                color: 'rgba(255,255,255,0.8)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                backdropFilter: 'blur(10px)',
+              }}
+              aria-label="Close AI try-on result"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

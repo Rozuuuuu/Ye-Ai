@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateImageBase64, stripDataUrl, isUuid } from '../api/_lib/validate.js';
 import { rateLimit } from '../api/_lib/ratelimit.js';
 import analyzeHandler from '../api/analyze.js';
+import tryonHandler from '../api/tryon.js';
 import capturesHandler from '../api/captures/index.js';
 import captureByIdHandler from '../api/captures/[id].js';
 
@@ -91,6 +92,33 @@ describe('POST /api/analyze guards', () => {
   it('rejects a missing image with 400', async () => {
     const res = await call(analyzeHandler, { method: 'POST', body: {} });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('POST /api/tryon guards', () => {
+  it('rejects non-POST methods', async () => {
+    const res = await call(tryonHandler, { method: 'GET' });
+    expect(res.statusCode).toBe(405);
+  });
+  // Own IP per test: /api/tryon has a tight rate limit and the limiter
+  // buckets purely by IP, shared across all handlers in this module
+  it('rejects a missing person image with 400', async () => {
+    const res = await call(tryonHandler, {
+      method: 'POST',
+      headers: { 'x-forwarded-for': '203.0.113.20' },
+      body: { garmentImageBase64: FAKE_IMAGE },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/person image/i);
+  });
+  it('rejects a missing garment image with 400', async () => {
+    const res = await call(tryonHandler, {
+      method: 'POST',
+      headers: { 'x-forwarded-for': '203.0.113.21' },
+      body: { personImageBase64: FAKE_IMAGE },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/garment image/i);
   });
 });
 
