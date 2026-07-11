@@ -11,8 +11,10 @@ import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../ut
 // torso (the rest is spread-out sleeves). Measured from the GLB geometry with
 // db/render-glb-silhouettes.mjs — the jacket is in A-pose so its bbox is
 // mostly sleeves. Used to match the garment's CHEST width to shoulder width.
+// yawFix: the t-shirt is authored turned 29.4° on its vertical axis (measured
+// with db/measure-glb-rotation.mjs); this bakes it back to camera-facing.
 const MODELS = [
-  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb',         torsoFrac: 0.95 },
+  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb',         torsoFrac: 0.86, yawFix: 29.4 * Math.PI / 180 },
   { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb', torsoFrac: 0.36 },
   { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb',    torsoFrac: 0.70 },
 ];
@@ -181,7 +183,7 @@ export default function ARTryOn() {
       .catch(() => setStatus('Camera access denied'));
 
     // Version marker so we can tell which placement code a device is running
-    console.info('[tryon] screen-space placement v3 (two-axis fit)');
+    console.info('[tryon] screen-space placement v4 (yaw-corrected models)');
 
     // 2. Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -340,6 +342,10 @@ export default function ARTryOn() {
       selectedModel.src,
       (gltf) => {
         const rawModel = gltf.scene;
+
+        // Undo any authored rotation BEFORE measuring the bounding box, so
+        // centring, chest width, and body height are all camera-facing values
+        if (selectedModel.yawFix) rawModel.rotation.y = selectedModel.yawFix;
 
         // Auto-scale
         const box    = new THREE.Box3().setFromObject(rawModel);
