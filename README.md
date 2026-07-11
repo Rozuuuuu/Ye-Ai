@@ -17,7 +17,8 @@ npm install
 
 # 2. Configure environment
 #    Copy .env.example to .env and fill in the values
-#    (DATABASE_URL, GEMINI_API_KEY, LYKDAT_API_KEY, BLOB_READ_WRITE_TOKEN)
+#    (DATABASE_URL, GEMINI_API_KEY, LYKDAT_API_KEY, BLOB_READ_WRITE_TOKEN;
+#     optional: VITE_SENTRY_DSN for error tracking)
 
 # 3. Run the dev server
 npm run dev        # frontend only (API calls will fail)

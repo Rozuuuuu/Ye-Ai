@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import * as Sentry from '@sentry/react';
 
 /**
  * ErrorBoundary — catches render errors anywhere in the tree so a single
@@ -15,8 +16,11 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    // Hook for error reporting (Sentry etc.) once monitoring is added
     console.error('Render crash:', error, info?.componentStack);
+    // No-op unless Sentry.init ran (VITE_SENTRY_DSN set)
+    Sentry.captureException(error, {
+      extra: { componentStack: info?.componentStack },
+    });
   }
 
   render() {
