@@ -178,6 +178,9 @@ export default function ARTryOn() {
       })
       .catch(() => setStatus('Camera access denied'));
 
+    // Version marker so we can tell which placement code a device is running
+    console.info('[tryon] screen-space placement v2 (3fcc787)');
+
     // 2. Renderer
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 2 : 3));
