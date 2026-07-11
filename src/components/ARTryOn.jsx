@@ -7,10 +7,14 @@ import { videoToScreen, screenToWorld } from '../utils/screenSpacePlacement';
 import { getWarpedGarment, loadGarmentAsBase64, checkBackendHealth } from '../utils/hybrid_integration';
 
 // ── Garment definitions ─────────────────────────────────────────────────────
+// torsoFrac: fraction of the model's bounding-box width that is the wearable
+// torso (the rest is spread-out sleeves). Measured from the GLB geometry with
+// db/render-glb-silhouettes.mjs — the jacket is in A-pose so its bbox is
+// mostly sleeves. Used to match the garment's CHEST width to shoulder width.
 const MODELS = [
-  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb' },
-  { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb' },
-  { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb' },
+  { id: 'tshirt',  label: 'T-Shirt', src: '/models/t_shirt.glb',         torsoFrac: 0.95 },
+  { id: 'jacket',  label: 'Jacket',  src: '/models/clothing_jacket.glb', torsoFrac: 0.36 },
+  { id: 'hoodie',  label: 'Hoodie',  src: '/models/HoodieJacket.glb',    torsoFrac: 0.70 },
 ];
 
 // Garment anchor map for TPS warp mode (loaded from JSON at runtime)
@@ -21,7 +25,7 @@ const DEFAULT_ANCHORS = [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]];
 // straight from crop-corrected landmark screen coords, and scale from shoulder
 // width. No world-distance estimation — that approach drifted (see git log).
 const GARMENT_DEPTH = 3.0;         // camera is at z=3, so the garment plane is z=0
-const GARMENT_WIDTH_FACTOR = 1.25; // garment width ÷ shoulder-joint width — the one tuning knob
+const GARMENT_WIDTH_FACTOR = 1.35; // garment chest width ÷ shoulder-joint width — the one tuning knob
 
 // ── Mobile / Desktop detection ──────────────────────────────────────────────
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -254,17 +258,19 @@ export default function ARTryOn() {
         const rawAngleZ = Math.atan2(sR.y - sL.y, sR.x - sL.x);
         const filteredAngleZ = filters.angleZ.filter(rawAngleZ, now);
 
-        const initialXRotation = Math.PI;
+        // glTF models are Y-up and front-facing by spec; the silhouettes in
+        // db/render-glb-silhouettes.mjs confirm all three are authored
+        // upright, so only the shoulder-line tilt is applied.
         const targetQ = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(initialXRotation, 0, filteredAngleZ, 'XYZ')
+          new THREE.Euler(0, 0, filteredAngleZ, 'XYZ')
         );
         wrapper.quaternion.slerp(targetQ, CONFIG.lerpFactor);
 
-        // --- 5. Scale: garment width tracks shoulder width ---
+        // --- 5. Scale: garment CHEST width tracks shoulder width ---
         const shoulderWorldWidth = Math.hypot(sR.x - sL.x, sR.y - sL.y);
-        const garmentWidth = shoulderWorldWidth * GARMENT_WIDTH_FACTOR;
-        const normWidth = wrapper.userData.normWidth || 1.6;
-        const filteredScale = filters.scale.filter(garmentWidth / normWidth, now);
+        const targetChestWidth = shoulderWorldWidth * GARMENT_WIDTH_FACTOR;
+        const chestWidth = wrapper.userData.chestWidth || 1.6;
+        const filteredScale = filters.scale.filter(targetChestWidth / chestWidth, now);
         wrapper.scale.setScalar(filteredScale);
       } else if (wrapper) {
         // ── Graceful degradation: hold the last pose briefly, then hide.
@@ -320,9 +326,6 @@ export default function ARTryOn() {
       (gltf) => {
         const rawModel = gltf.scene;
 
-        // Initial rotation fix (uncomment if model is upside down at rest)
-        // rawModel.rotation.x = Math.PI;
-
         // Auto-scale
         const box    = new THREE.Box3().setFromObject(rawModel);
         const size   = box.getSize(new THREE.Vector3());
@@ -338,9 +341,10 @@ export default function ARTryOn() {
         const wrapper = new THREE.Group();
         wrapper.add(rawModel);
 
-        // Record the model's normalized width so the render loop can match
-        // garment width to shoulder width regardless of each GLB's proportions
-        wrapper.userData.normWidth = size.x * scale;
+        // Record the model's normalized CHEST width (bbox width minus sleeve
+        // spread) so the render loop can match it to shoulder width — bbox
+        // width alone shrinks wide-sleeved models (jacket) to a tiny torso
+        wrapper.userData.chestWidth = size.x * scale * (selectedModel.torsoFrac ?? 1);
 
         scene.add(wrapper);
         modelRef.current = wrapper;

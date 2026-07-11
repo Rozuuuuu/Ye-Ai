@@ -89,7 +89,7 @@ describe('end-to-end placement (the two reported bugs)', () => {
   });
 
   it('garment covers a sensible fraction of the screen, not the whole camera', () => {
-    const WIDTH_FACTOR = 1.25;
+    const WIDTH_FACTOR = 1.35;
     // Shoulders 25% of the video frame apart (typical webcam distance)
     const sL = project({ x: 0.625, y: 0.35 });
     const sR = project({ x: 0.375, y: 0.35 });
