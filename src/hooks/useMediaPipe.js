@@ -21,7 +21,10 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
     if (!videoElement) return;
 
     // The most bulletproof way to load MediaPipe without Vite/Bundler ES Module conflicts
-    // is to inject the CDN script tag directly and use window.Holistic
+    // is to inject the CDN script tag directly and use window.Holistic.
+    // Version is pinned — an unpinned URL serves "latest", which can change
+    // under a deployed build without warning.
+    const MEDIAPIPE_VERSION = '0.5.1675471629';
     const loadMediaPipe = () => {
       return new Promise((resolve, reject) => {
         if (window.Holistic) {
@@ -29,7 +32,7 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
           return;
         }
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js';
+        script.src = `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@${MEDIAPIPE_VERSION}/holistic.js`;
         script.crossOrigin = 'anonymous';
         script.onload = () => resolve(window.Holistic);
         script.onerror = (err) => reject(err);
@@ -48,7 +51,7 @@ export const useMediaPipe = (videoElement, options = { modelComplexity: 1, mirro
 
       holistic = new HolisticClass({
         locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+          `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@${MEDIAPIPE_VERSION}/${file}`,
       });
 
       holistic.setOptions({

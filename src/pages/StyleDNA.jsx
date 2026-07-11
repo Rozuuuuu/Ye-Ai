@@ -15,7 +15,7 @@ export default function StyleDNA() {
       {/* ── Visual Noise ── */}
       <div 
         className="fixed inset-0 pointer-events-none z-[100] opacity-[0.03]"
-        style={{ backgroundImage: "url('https://grainy-gradients.vercel.app/noise.svg')" }}
+        style={{ backgroundImage: "url('/images/noise.svg')" }}
       />
 
       <TopAppBar />
@@ -55,7 +55,7 @@ export default function StyleDNA() {
             <img 
               alt="Cyber-Chic" 
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsXZbOVxl2VVepujd33iSllfV0yTtKS3AAI7jhFKUsRurWXB4uVrU49pcvZtvIJg0ojk4LeBhRR3FcowCHwcRlhiGnaMkZiw-40ISMvcspnC6nBMYn24urEyw7iChakgOflXYhQAxL-g0-1NJrw9xmK4AI4s6MNWTxIGxnxIwHS2CGYuCQC0jIbBA-MWCjwr-GfzbEIgNCsupMjOaED0FEJq_9bUGRX0-_oQXJIKhZJhbc1TSyhzvR3HVs2_5qt8V4cJlWiLZQ4MI"
+              src="/images/style-cyber-chic.jpg"
             />
             {/* Brackets */}
             <div className="absolute top-6 left-6 w-6 h-6 border-t-[1.5px] border-l-[1.5px] border-primary-container z-20"></div>
@@ -90,7 +90,7 @@ export default function StyleDNA() {
             <img 
               alt="Old Money" 
               className="absolute inset-0 w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMVAJHzi9jN1yETZ6P-ifJlj9-Qh1lzOrNG-S4H7nQLUE4wNhbGMtOzm21gruJr7ouLt6IdPMLG8BlZsCMcqATONfgiCPqxQT30yoVGAIDp5c8KSkUKBtYRn0uzs3SkrwDRtQn-_X3tjK88XYxPoLOVeZdXUqVwv-iBksHGKr526XqFZuXzjMHurRQGAMW8CvPWYW1okshU82vPK_RUm1HUWPmPag9j4yUzaUYesGJa0zZbPETPtnCGoVVS0Xoz-F8cy1jaJt1wTM"
+              src="/images/style-old-money.jpg"
             />
             <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors z-10"></div>
             <div className="absolute bottom-0 left-0 p-6 z-20 w-full">
@@ -112,7 +112,7 @@ export default function StyleDNA() {
             <img 
               alt="Quiet Luxury" 
               className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1s1B5u0XaYu5xie43c3cHZ7jwO12kWTeD99DPQDDSL7ZatNCc0y-m1IBJ88WtGlevqwcZgtcZWGkepVQdPM3yOM_WFmFC5MTMed20dYX_suC7bsj6fMYZcdTDKyXTRctbXp8CWhskcP3ZRgI8p35NrKkecGwf0DCaWA5zTaZogVTceNZBjYjjL_0wG1xMrVJRSUDssG9A98xrDnt7EslpVucWkvesLl8rNCcCpor5Ii1XKRR9bzBD1_jXv0siipzPLjXs6v0Cll8"
+              src="/images/style-quiet-luxury.jpg"
             />
             <div className="absolute inset-0 bg-surface-container-lowest/40 z-10"></div>
             <div className="absolute bottom-0 left-0 p-6 z-20">
@@ -134,7 +134,7 @@ export default function StyleDNA() {
             <img 
               alt="Techwear" 
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuC0PLtTb63SNqEteHNuGk39eAHfna8Z9E2MvJ7Sd1MmxiIGfVYzrfKcEyqz-Vmv0EKod71MqlKGkdkjuNNdChXe2ZSeG6-36pk9hlnB5nSrJXWqLkrbktBkCFEWPqKQUx8NBkOIrnWsFLLjnfe55KRdK9BMjyEVH02ymdxKcpG3B415WgpKtDxW7lazh-zEd_o5X4b40wlXH7R3S18elGAwbTvvREiarTuLkpEkTt0IGoIxC82SWVVGVNZ2IG9jPCt1QyrFNdYCjAM"
+              src="/images/style-techwear.jpg"
             />
             <div className="absolute inset-0 bg-gradient-to-r from-background to-transparent z-10"></div>
             <div className="absolute inset-0 flex items-center p-8 md:p-12 z-20">

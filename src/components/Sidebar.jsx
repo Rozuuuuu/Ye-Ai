@@ -44,7 +44,7 @@ export default function Sidebar({ isOpen, onClose }) {
                   <img
                     alt="Profile"
                     className="w-full h-full object-cover grayscale"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmX5VScWMpJCuuLHhI4vmTCPwuqhu43NN8w38zSGt_XOClatZzbcHd1Qyi-YvXfWQa73kUJTqiIvxs34aTsR4PcSeqLxvOU8EpLNExltltMwiWkyB28OKmtPbhBLstJw9ZJmh-fCFRVgiivkjiqLWS0zKMl0dMNcP1ZTjz1oBq0-lRMF4-aiCPRNJXD2e-DQHruDwPpcV7_yJ0LLD1NUCNTWA-l-hVqXpgYXpW23lMTP73N8Q_YIuKVIQz8mCP8SmQPeBLY2-UPoY"
+                    src="/images/profile-placeholder.jpg"
                   />
                 </div>
                 <div>

@@ -47,6 +47,7 @@ export default function ARTryOn() {
   const garmentBase64Ref = useRef(null);
   const garmentAnchorsRef = useRef(null);
   const warpIntervalRef = useRef(null);
+  const isWarpingRef = useRef(false); // in-flight guard (ref, so the poll interval isn't rebuilt per request)
 
   // ── Body tracking (throttleMs: 0 for 3D, but we throttle warp sends separately) ──
   const { landmarks, isLoaded } = useMediaPipe(videoElement, CONFIG);
@@ -101,9 +102,10 @@ export default function ARTryOn() {
     const lms = landmarksRef.current;
     const garmentB64 = garmentBase64Ref.current;
     const anchors = garmentAnchorsRef.current?.[selectedModel.id]?.anchors;
-    
-    if (!lms?.poseLandmarks || !garmentB64 || isWarping) return;
 
+    if (!lms?.poseLandmarks || !garmentB64 || isWarpingRef.current) return;
+
+    isWarpingRef.current = true;
     setIsWarping(true);
     try {
       const result = await getWarpedGarment(
@@ -117,9 +119,10 @@ export default function ARTryOn() {
     } catch (err) {
       console.error('Warp request failed:', err);
     } finally {
+      isWarpingRef.current = false;
       setIsWarping(false);
     }
-  }, [selectedModel, isWarping]);
+  }, [selectedModel]);
 
   useEffect(() => {
     if (viewMode === 'warp' && backendOnline) {
