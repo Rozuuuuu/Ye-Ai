@@ -4,7 +4,9 @@
    Cache-first with network fallback — PWA installable
    ───────────────────────────────────────────────────── */
 
-const CACHE_NAME = 'ai-fashion-judge-v2';
+// Bump the version on releases that MUST reach devices immediately — any
+// byte change here triggers a SW reinstall, and activate() wipes old caches.
+const CACHE_NAME = 'ai-fashion-judge-v3';
 
 const urlsToCache = [
   '/',
